@@ -2,7 +2,7 @@
 
 A 3D stress ball that wears your face. Squish it, pinch it, pick it up and drop it.
 
-Open `index.html` in a browser, or serve the folder with any static host (GitHub Pages works as-is).
+Open `index.html` in a browser (it works straight from disk), or serve the folder with any static host (GitHub Pages works as-is).
 
 ## What you can do
 
@@ -28,4 +28,13 @@ A single HTML page with no build step.
 - [@vladmandic/face-api](https://github.com/vladmandic/face-api) 1.7.15 finds the face and its 68 landmark points, loaded from jsDelivr. It only loads when you upload a photo.
 - `models/` holds that library's tiny face detector and 68-point landmark weights, stored as base64 text next to their manifests. They come from the face-api repository under its MIT license.
 
-Photos never leave your browser: detection, cut-outs and expressions all run locally.
+- `models/file-preview-models.js` packs the same weights as a script, for browsers that block `fetch` on `file://`. Rebuild it after changing the models: `node scripts/bundle-file-models.cjs`.
+
+Photos never leave your browser: detection and cut-outs run locally.
+
+## Tests
+
+No dependencies; they run the page's own simulation code in Node.
+
+- `node tests/physics.cjs`: landings come out identical at 30, 60, 120 and 144 Hz, every material settles, and plastic slides further than foam.
+- `node tests/clay.cjs`: clay keeps local dents, repeated releases don't flatten it, and a baked shape doesn't creep afterwards.
