@@ -16,7 +16,7 @@ Open `index.html` in a browser (it works straight from disk), or serve the folde
 
 - **Material:** with a photo on, the first color swatch is your own skin tone, sampled from the cheeks, forehead and nose. Materials: Squishy (foam that wrinkles when squeezed), Foam (slow memory-foam rebound), Bouncy plastic, or Clay (keeps the shape you give it).
 - **Photo:** upload a photo. Your face is found and framed automatically; put it on as the whole photo, an ink print or a sculpted 3D face, and adjust the framing.
-- **Face:** your photo or a preset (Smiley, Frog, Chick, Kitty, Puppy, Panda, Piggy, Bear).
+- **Face:** your photo or a preset (Smiley, Frog, Kitty, Chick, Puppy, Panda, Piggy, Bear). Presets come in four expressions: Happy, Surprised, Angry and Crying.
 - **Hair:** yarn strands growing from a plug on top: None, Tuft, Mohawk, Curls or Shaggy, in six colors.
 
 Sound and vibration can be muted with the speaker button (or the M key).

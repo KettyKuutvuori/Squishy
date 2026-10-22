@@ -190,6 +190,15 @@ h1 span{color:var(--accent)}
     </div>
     <div class="panel" data-panel="face" hidden>
       <div class="thumbs" id="presetRow" role="radiogroup" aria-label="Face"></div>
+      <div class="sect" id="moodGroup" hidden>
+        <span class="label">Expression</span>
+        <div class="seg" id="moodSeg">
+          <button aria-pressed="true" data-mood="happy">Happy</button>
+          <button aria-pressed="false" data-mood="surprised">Surprised</button>
+          <button aria-pressed="false" data-mood="angry">Angry</button>
+          <button aria-pressed="false" data-mood="crying">Crying</button>
+        </div>
+      </div>
       <input class="vh" type="file" id="photo" accept="image/*">
     </div>
     <div class="panel" data-panel="hair" hidden>
@@ -252,7 +261,7 @@ const MATS = {
 };
 const HAIR_COLORS=[{name:'Sunshine',base:'#D49B00'},{name:'Ink',base:'#1E1D22'},{name:'Cocoa',base:'#6B4226'},{name:'Ginger',base:'#D9622B'},{name:'Bubblegum',base:'#FF6FA8'},{name:'Mint',base:'#5FD3A6'}];
 const state = { mat:'squishy', color:0, style:'photo', img:null, crop:null, marks:null, squishes:0, sound:true,
-  hair:'tuft', hairColor:0, hairTouched:false, preset:'me', expr:'none', src:null, srcMarks:null };
+  hair:'tuft', hairColor:0, hairTouched:false, mood:'happy', preset:'me', expr:'none', src:null, srcMarks:null };
 const M = () => MATS[state.mat];
 // with a photo on, the palette starts with a colour sampled from your skin
 const palette = () => state.skin ? [{name:'Your skin tone', base:state.skin, skin:true}, ...M().palette] : M().palette;
@@ -1248,6 +1257,8 @@ function buildSwatches(){
 }
 swatchRow($('hairSwatches'),HAIR_COLORS,state.hairColor,true,i=>{ state.hairColor=i; buildHair(); });
 const pressed=(id,attr,val)=>$(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x.dataset[attr]===val));
+$('moodSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return;
+  state.mood=b.dataset.mood; pressed('moodSeg','mood',state.mood); buildFace(); wobble(.04); });
 function setStyle(v){ state.style=v; pressed('styleSeg','style',v); }
 function setHair(v){ state.hair=v; pressed('hairSeg','hair',v); $('hairSwatches').hidden=v==='none'; buildHair(); }
 $('styleSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; setStyle(b.dataset.style); if(state.preset!=='me') setPreset('me'); else buildFace(); });
@@ -1625,23 +1636,36 @@ function addAnimalPart(geometry,color,gloss=false){
 function animalOval(center,size,color,gloss=false,tilt=0){
   const g=new THREE.SphereGeometry(1,28,18);g.scale(...size);g.rotateZ(tilt);g.translate(...center);addAnimalPart(g,color,gloss);
 }
-function frogEyeMound(side,color){
+function frogEyeMound(side,color,mood='happy'){
   const geometry=new THREE.SphereGeometry(1,48,32);
   geometry.setAttribute('eyeLocal',geometry.attributes.position.clone());
   geometry.scale(.255,.275,.25);geometry.translate(side*.43,.63,.40);
   const mesh=addAnimalPart(geometry,color);mesh.material.bumpScale=.0015;mesh.material.roughness=.62;
   mesh.material.onBeforeCompile=shader=>{
     shader.uniforms.eyeWhite={value:lin('#F2EBD2')};shader.uniforms.eyeBlack={value:lin('#111610')};
+    shader.uniforms.eyeMode={value:['happy','surprised','angry','crying'].indexOf(mood)};shader.uniforms.eyeSide={value:side};
     shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec3 eyeLocal; varying vec3 vEyeLocal;')
       .replace('#include <begin_vertex>','#include <begin_vertex>\nvEyeLocal=eyeLocal;');
-    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vEyeLocal; uniform vec3 eyeWhite; uniform vec3 eyeBlack;')
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vEyeLocal; uniform vec3 eyeWhite; uniform vec3 eyeBlack; uniform float eyeMode; uniform float eyeSide;')
       .replace('#include <color_fragment>',`#include <color_fragment>
         float frontEye=step(0.0,vEyeLocal.z);
+        vec3 skin=diffuseColor.rgb;
         float r=length(vEyeLocal.xy-vec2(0.0,0.06));
-        diffuseColor.rgb=mix(diffuseColor.rgb,eyeWhite,(1.0-smoothstep(.75,.77,r))*frontEye);
-        diffuseColor.rgb=mix(diffuseColor.rgb,eyeBlack,(1.0-smoothstep(.46,.48,r))*frontEye);
+        float whiteR=eyeMode==1.0?.82:.76, pupilR=eyeMode==1.0?.3:.47;          // surprised: wide eye, small pupil
+        diffuseColor.rgb=mix(diffuseColor.rgb,eyeWhite,(1.0-smoothstep(whiteR-.01,whiteR+.01,r))*frontEye);
+        diffuseColor.rgb=mix(diffuseColor.rgb,eyeBlack,(1.0-smoothstep(pupilR-.01,pupilR+.01,r))*frontEye);
         float glint=1.0-smoothstep(.075,.095,length(vEyeLocal.xy-vec2(-.13,.23)));
-        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(1.0),glint*frontEye);`);
+        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(1.0),glint*frontEye);
+        float inward=-eyeSide*vEyeLocal.x;                                           // + toward the middle of the face
+        if(eyeMode==2.0){                                                           // angry: a lid slanting down toward the middle
+          float lid=.32-.42*inward, d=vEyeLocal.y-lid;
+          diffuseColor.rgb=mix(diffuseColor.rgb,skin,smoothstep(-.01,.01,d)*frontEye);
+          diffuseColor.rgb=mix(diffuseColor.rgb,eyeBlack,(1.0-smoothstep(.05,.08,abs(d)))*(1.0-smoothstep(.76,.8,r))*frontEye);
+        } else if(eyeMode==3.0){                                                    // crying: shut, with a sad slant
+          float line=.04+.3*inward, d=vEyeLocal.y-line;
+          diffuseColor.rgb=mix(diffuseColor.rgb,skin,frontEye);
+          diffuseColor.rgb=mix(diffuseColor.rgb,eyeBlack,(1.0-smoothstep(.05,.08,abs(d)))*(1.0-smoothstep(.62,.66,abs(vEyeLocal.x)))*frontEye);
+        }`);
   };
 }
 function animalEar(center,size,color,tilt){
@@ -1713,12 +1737,17 @@ function applyRefinedAnimal(f){
         p2[0]-(p3[0]-p1[0])/6,p2[1]-(p3[1]-p1[1])/6,...p2);
     }f.stroke();
   };
+  const mood=state.mood||'happy', happy=mood==='happy';
+  const unitPx=(printPoint([.5,0,1])[0]-printPoint([0,0,1])[0])/.5;     // texture pixels per face unit, across
+  const mouthAt=(p,hw,ink)=>{ const [x,y]=printPoint(p); moodMouth(f,x,y,hw*unitPx,mood,ink); };
   if(key==='frog'){
     for(const side of [-1,1]){
-      frogEyeMound(side,color);
+      frogEyeMound(side,color,mood);
       faceOval([side*.105,.16,.94],[.026,.03,.018],'#26311D');
+      if(mood==='crying'){ const [x,y]=printPoint([side*.6,.56,.9]); moodTear(f,x,y,unitPx*.28,unitPx*.05); }
     }
-    faceLine([[-.35,.015,.91],[-.25,-.10,.958],[0,-.16,.977],[.25,-.10,.958],[.35,.015,.91]],.018,'#25301C');
+    if(happy) faceLine([[-.35,.015,.91],[-.25,-.10,.958],[0,-.16,.977],[.25,-.10,.958],[.35,.015,.91]],.018,'#25301C');
+    else mouthAt([0,-.09,.97],.24,'#25301C');
   }else{
     for(const side of [-1,1]){
       if(key==='piggy'){
@@ -1730,32 +1759,81 @@ function applyRefinedAnimal(f){
         if(key==='bear')animalOval([side*.65,.78,.221],[.155,.16,.035],cream);
       }
       if(key==='panda')faceOval([side*.405,.20,.82],[.23,.29,.075],'#262321',false,side*.4);
-      faceOval([side*.40,.20,key==='panda'?.903:.876],[.092,.103,.063],'#151311',true);
+      if(happy) faceOval([side*.40,.20,key==='panda'?.903:.876],[.092,.103,.063],'#151311',true);
+      else { const [x,y]=printPoint([side*.40,.20,.88]);
+        // panda eyes sit in black patches, so their brows and shut eyes are drawn in its cream
+        moodEye(f,x,y,.092*.72*unitPx,side,mood,'#151311',key==='panda'?'#EAE0CE':'#211A16'); }
     }
     if(key==='piggy'){
       noseRelief([0,-.035,.94],[.285,.195,.135],.075);
       faceOval([0,-.035,.94],[.285,.195,.135],'#DC8D81');
       for(const side of [-1,1])faceOval([side*.095,-.025,1.065],[.036,.061,.012],'#A6534C');
+      if(!happy) mouthAt([0,-.22,.95],.16,'#8E4A44');
     }else{
       if(key==='bear')faceOval([0,-.10,.936],[.29,.25,.09],cream);
       noseRelief([0,.025,1],[.10,.073,.055],.035);
       faceOval([0,.025,key==='bear'?1.032:.972],[.10,.073,.055],key==='bear'?'#4B2D1C':dark,true);
       const z=key==='bear'?1.027:.963;
-      faceLine([[0,-.025,z],[0,-.105,z],[-.055,-.16,z],[-.12,-.145,z],[-.145,-.11,z]],.013,dark);
-      faceLine([[0,-.105,z],[.055,-.16,z],[.12,-.145,z],[.145,-.11,z]],.013,dark);
+      faceLine([[0,-.025,z],[0,-.105,z]],.013,dark);
+      if(happy){
+        faceLine([[0,-.105,z],[-.055,-.16,z],[-.12,-.145,z],[-.145,-.11,z]],.013,dark);
+        faceLine([[0,-.105,z],[.055,-.16,z],[.12,-.145,z],[.145,-.11,z]],.013,dark);
+      } else mouthAt([0,-.16,z],.14,dark);
     }
+  }
+}
+
+/* Expressions shared by every animal face. All sizes are in texture pixels:
+   eye centre (x,y) and radius r; side -1 = the animal's right eye (on the left), +1 = left eye. */
+const TEAR='#8ED2F5';
+function moodEye(c,x,y,r,side,mood,ink,brow){
+  const L=(pts,w,col)=>{ c.strokeStyle=col; c.lineWidth=w; c.lineCap='round'; c.lineJoin='round'; c.beginPath(); pts.forEach((q,i)=>i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1])); c.stroke(); };
+  const O=(cx,cy,rx,ry,col)=>{ c.fillStyle=col; c.beginPath(); c.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); c.fill(); };
+  const bc=brow||ink, w=Math.max(2,r*.42);
+  if(mood==='surprised'){
+    O(x,y,r*1.32,r*1.5,ink); O(x+r*.42,y-r*.5,r*.42,r*.42,'#FFFFFF'); O(x-r*.38,y+r*.55,r*.18,r*.18,'rgba(255,255,255,.8)');
+    c.strokeStyle=bc; c.lineWidth=w*.8; c.lineCap='round'; c.beginPath(); c.arc(x,y-r*1.6,r*1.5,1.25*Math.PI,1.75*Math.PI); c.stroke();   // raised brow
+  } else if(mood==='angry'){
+    O(x,y+r*.15,r,r*1.05,ink); O(x+r*.3,y-r*.2,r*.28,r*.28,'#FFFFFF');
+    L([[x+side*r*1.9,y-r*2.3],[x-side*r*1.5,y-r*1.15]],w,bc);                                   // brow sloping down to the middle
+  } else if(mood==='crying'){
+    L([[x-side*r*1.35,y-r*.55],[x,y+r*.05],[x+side*r*1.35,y+r*.35]],w,bc);                       // squeezed shut, sad slant
+    moodTear(c,x+side*r*.9,y+r*.8,r*3.2,r*.75);
+  } else {
+    O(x,y,r,r*1.15,ink); O(x+r*.32,y-r*.38,r*.3,r*.3,'#FFFFFF');
+  }
+}
+function moodTear(c,x,y,len,w){
+  const g=c.createLinearGradient(x,y,x,y+len); g.addColorStop(0,'rgba(142,210,245,.95)'); g.addColorStop(1,'rgba(142,210,245,.85)');
+  c.fillStyle=g; c.beginPath(); c.moveTo(x-w*.45,y); c.lineTo(x+w*.45,y); c.lineTo(x+w*.6,y+len); c.lineTo(x-w*.6,y+len); c.closePath(); c.fill();
+  c.beginPath(); c.arc(x,y+len,w,0,Math.PI*2); c.fill();
+  c.fillStyle='rgba(255,255,255,.75)'; c.beginPath(); c.ellipse(x-w*.35,y+len-w*.25,w*.25,w*.35,0,0,Math.PI*2); c.fill();
+}
+// mouth centred on (x,y), half-width hw
+function moodMouth(c,x,y,hw,mood,ink){
+  const O=(cx,cy,rx,ry,col)=>{ c.fillStyle=col; c.beginPath(); c.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); c.fill(); };
+  const lw=Math.max(2,hw*.2);
+  if(mood==='surprised'){ O(x,y+hw*.2,hw*.42,hw*.55,ink); O(x,y+hw*.45,hw*.26,hw*.2,'#E77F86'); }
+  else if(mood==='angry'){ c.strokeStyle=ink; c.lineWidth=lw; c.lineCap='round'; c.beginPath(); c.arc(x,y+hw*.95,hw*.75,1.22*Math.PI,1.78*Math.PI); c.stroke(); }
+  else if(mood==='crying'){
+    c.fillStyle=ink; c.beginPath(); c.moveTo(x-hw*.7,y+hw*.45);
+    c.quadraticCurveTo(x-hw*.35,y-hw*.05,x,y+hw*.1); c.quadraticCurveTo(x+hw*.35,y-hw*.05,x+hw*.7,y+hw*.45);   // wobbly top lip
+    c.quadraticCurveTo(x,y+hw*1.05,x-hw*.7,y+hw*.45); c.fill();
+    O(x,y+hw*.62,hw*.3,hw*.16,'#E77F86');
   }
 }
 
 // faces, drawn in face-texture units (eyes sit near y .45, mouth near .55)
 function paintPresetFace(c,key,T){
   const E=(x,y,rx,ry,col,rot=0)=>{ c.fillStyle=col; c.beginPath(); c.ellipse(x*T,y*T,rx*T,ry*T,rot,0,Math.PI*2); c.fill(); };
-  const eye=(x,y,r)=>{ E(x,y,r,r*1.15,'#17151A'); E(x+r*.32,y-r*.38,r*.3,r*.3,'#FFFFFF'); };
+  const mood=state.mood||'happy', happy=mood==='happy';
+  const eye=(x,y,r)=>moodEye(c,x*T,y*T,r*T,x<.5?-1:1,mood,'#17151A');
+  const mouth=(x,y,hw,ink='#2A2220')=>moodMouth(c,x*T,y*T,hw*T,mood,ink);
   const blush=(x,y,col='rgba(255,110,130,.38)')=>{ const g=c.createRadialGradient(x*T,y*T,0,x*T,y*T,.05*T); g.addColorStop(0,col); g.addColorStop(1,'rgba(255,110,130,0)'); c.fillStyle=g; c.fillRect((x-.06)*T,(y-.06)*T,.12*T,.12*T); };
   const line=(pts,w,col='#17151A')=>{ c.strokeStyle=col; c.lineWidth=w*T; c.lineCap='round'; c.lineJoin='round'; c.beginPath(); pts.forEach((q,i)=>i?c.lineTo(q[0]*T,q[1]*T):c.moveTo(q[0]*T,q[1]*T)); c.stroke(); };
   const arc=(x,y,r,a0,a1,w,col='#17151A')=>{ c.strokeStyle=col; c.lineWidth=w*T; c.lineCap='round'; c.beginPath(); c.arc(x*T,y*T,r*T,a0,a1); c.stroke(); };
   c.save();
-  if(key==='smiley'){ eye(.42,.46,.024); eye(.58,.46,.024); arc(.5,.5,.07,.2*Math.PI,.8*Math.PI,.013); blush(.37,.53); blush(.63,.53); }
+  if(key==='smiley'){ eye(.42,.46,.024); eye(.58,.46,.024); if(happy) arc(.5,.5,.07,.2*Math.PI,.8*Math.PI,.013); else mouth(.5,.55,.045,'#17151A'); blush(.37,.53); blush(.63,.53); }
   else if(key==='frog'){
     // fine darker speckles in the soft-touch skin
     let sd=3; const rr=()=>((sd=(sd*16807)%2147483647)/2147483647);
@@ -1774,13 +1852,15 @@ function paintPresetFace(c,key,T){
   }
   else if(key==='chick'){
     eye(.41,.44,.023);eye(.59,.44,.023);blush(.35,.51,'rgba(240,126,52,.45)');blush(.65,.51,'rgba(240,126,52,.45)');
-    line([[.449,.513],[.477,.518],[.5,.519],[.523,.518],[.551,.513]],.0035,'#B96725');
+    if(happy) line([[.449,.513],[.477,.518],[.5,.519],[.523,.518],[.551,.513]],.0035,'#B96725');
+    else mouth(.5,.555,.042,'#6B3416');                               // beak opens below
   }
   else if(key==='kitty'){
     eye(.41,.44,.023);eye(.59,.44,.023);
     c.fillStyle='#E99D91';c.beginPath();c.moveTo(.479*T,.5*T);c.quadraticCurveTo(.5*T,.491*T,.521*T,.5*T);c.quadraticCurveTo(.514*T,.515*T,.5*T,.523*T);c.quadraticCurveTo(.486*T,.515*T,.479*T,.5*T);c.fill();
     line([[.5,.522],[.5,.536]],.006,'#342B25');
-    arc(.478,.535,.022,.05*Math.PI,.93*Math.PI,.006,'#342B25');arc(.522,.535,.022,.07*Math.PI,.95*Math.PI,.006,'#342B25');
+    if(happy){ arc(.478,.535,.022,.05*Math.PI,.93*Math.PI,.006,'#342B25');arc(.522,.535,.022,.07*Math.PI,.95*Math.PI,.006,'#342B25'); }
+    else mouth(.5,.548,.03,'#342B25');
     for(const sx of [-1,1]){
       line([[.5+sx*.13,.515],[.5+sx*.19,.51]],.005,'#342B25');
       line([[.5+sx*.135,.545],[.5+sx*.18,.566]],.005,'#342B25');
@@ -1788,10 +1868,11 @@ function paintPresetFace(c,key,T){
   }
   else if(key==='puppy'){
     eye(.41,.44,.025);eye(.59,.44,.025);
-    E(.5,.59,.023,.034,'#EA9384');line([[.5,.568],[.5,.602]],.0025,'#C67267');
+    if(happy){ E(.5,.59,.023,.034,'#EA9384');line([[.5,.568],[.5,.602]],.0025,'#C67267'); }
     E(.5,.509,.033,.022,'#513726');E(.489,.5,.008,.004,'rgba(255,231,208,.3)');
     line([[.5,.528],[.5,.545]],.006,'#3C291E');
-    arc(.474,.54,.026,.05*Math.PI,.93*Math.PI,.006,'#3C291E');arc(.526,.54,.026,.07*Math.PI,.95*Math.PI,.006,'#3C291E');
+    if(happy){ arc(.474,.54,.026,.05*Math.PI,.93*Math.PI,.006,'#3C291E');arc(.526,.54,.026,.07*Math.PI,.95*Math.PI,.006,'#3C291E'); }
+    else mouth(.5,.56,.034,'#3C291E');
   }
   else if(key==='panda'){
     // big tilted patches with the bead eyes sitting in them
@@ -2011,7 +2092,7 @@ function setPreset(key){
   state.preset=key;
   $('presetRow').querySelectorAll('.thumb').forEach(b=>b.setAttribute('aria-checked',b.dataset.key===key));
   const me=key==='me';
-  $('swatches').hidden=!me;
+  $('swatches').hidden=!me; $('moodGroup').hidden=me;
   if(!state.hairTouched) setHair(me?M().hair:'none');
   const pm=!me&&PRESETS[key].mat;                                     // some presets come with their own material
   if(pm && state.mat!==pm){ state.mat=pm; state.color=state.skin?1:0; pressed('matSeg','mat',pm); buildSwatches(); }
