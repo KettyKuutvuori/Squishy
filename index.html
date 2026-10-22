@@ -759,44 +759,42 @@ function buildHair(){
   if(st==='none'){ shadeUnderHair(); return; }
   let seed=11; const r=()=>((seed=(seed*16807)%2147483647)/2147483647);
   const pick=fn=>{ const c=[]; for(let i=0;i<NV;i++) if(fn(base[i*3],base[i*3+1],base[i*3+2],baseN[i*3+1])) c.push(i); return c; };
-  const faceZone=(x,y,z)=>z>.45&&y<.5;       // keep the face clear
-  let cand,count,make;
-  if(st==='tuft'){ SEG=10; count=210; cand=pick((x,y,z,ny)=>ny>.74);
-    make=()=>({len:.19+r()*.17,w:.024+r()*.008,tilt:[(r()-.5)*.7,.55+r()*.35,(r()-.5)*.7],droop:.06,k:.1}); }
-  else if(st==='mohawk'){ SEG=8; count=200; cand=pick((x,y,z,ny)=>Math.abs(x)<.12&&y>.5);
-    make=()=>({len:.18+r()*.14,w:.026+r()*.008,tilt:[(r()-.5)*.18,.25,(r()-.5)*.3],droop:.06,k:.12}); }
-  else if(st==='curls'){ SEG=24; count=340; cand=pick((x,y,z,ny)=>ny>.38&&!faceZone(x,y,z));
-    make=()=>({len:.13+r()*.09,w:.02+r()*.006,tilt:[(r()-.5)*.6,.1,(r()-.5)*.6],droop:.05,k:.1,curl:{amp:.032+r()*.018,f:9+r()*4,ph:r()*6.28}}); }
-  else { SEG=10; count=900; cand=pick((x,y,z,ny)=>ny>.28&&!faceZone(x,y,z));
-    make=()=>{ const a=r()*6.283;
-      const short=r()<.3;                                      // a short layer that covers the crown
-      return {len:short?.16+r()*.1:.42+r()*.26,w:.026+r()*.007,tilt:[0,0,0],droop:0,k:.05,hang:true,out:[Math.cos(a),0,Math.sin(a)]}; }; }
+  /* Like the real toy: every strand comes out of one small plug on top of the head and sprays
+     outward. Each strand gets its own direction in the fountain; its root is a point in the plug. */
+  const top=pick((x,y)=>y>0), topY=Math.max(...top.map(i=>base[i*3+1]));
+  const angOf=i=>{ const x=base[i*3], y=base[i*3+1], z=base[i*3+2]; return Math.atan2(Math.hypot(x,z), y); };
+  let count,make,plug=0, fountain=true;
+  // a direction tipped `a` away from straight up, toward compass heading `az`
+  const spray=(a,az)=>[Math.sin(a)*Math.cos(az), Math.cos(a), Math.sin(a)*Math.sin(az)];
+  if(st==='tuft'){ SEG=10; count=320; plug=.13;
+    make=()=>{ const az=r()*6.283, a=1.08*Math.sqrt(r());             // more strands toward the outside of the fan
+      return {len:.44+r()*.3,w:.014+r()*.005,dir:spray(a,az),az,droop:.1+a*.22,k:.1}; }; }
+  else if(st==='curls'){ SEG=24; count=300; plug=.16;
+    make=()=>{ const az=r()*6.283, a=1.35*Math.sqrt(r());
+      return {len:.32+r()*.14,w:.017+r()*.005,dir:spray(a,az),az,droop:.08,k:.1,curl:{amp:.03+r()*.016,f:9+r()*4,ph:r()*6.28}}; }; }
+  else if(st==='shaggy'){ SEG=12; count=520; plug=.15;
+    make=()=>{ const az=r()*6.283, out=[Math.cos(az),0,Math.sin(az)];
+      // drapes down the head from the plug; the front is cut short into bangs above the eyes
+      const front=Math.max(0,out[2]), len=(1.05+r()*.35)*(1-.62*Math.pow(front,1.5));
+      return {len,w:.02+r()*.006,tilt:[0,0,0],droop:0,k:.05,hang:true,out,az,lift:.02+r()*.05}; }; }
+  else { fountain=false; SEG=8; count=200;
+    const cand=pick((x,y,z,ny)=>Math.abs(x)<.12&&y>.5);
+    make=()=>({len:.18+r()*.14,w:.022+r()*.007,tilt:[(r()-.5)*.18,.25,(r()-.5)*.3],droop:.06,k:.12,vi:cand[(r()*cand.length)|0]}); }
   const baseC=new THREE.Color(HAIR_COLORS[state.hairColor].base);
   hairColU.value.copy(baseC).convertSRGBToLinear();
-  // Spread roots evenly over the hair area. The mesh is denser toward the face, so picking
-  // random vertices clustered hair at the front and left bald patches on top and at the back.
-  const dirOf=i=>{ const x=base[i*3], y=base[i*3+1], z=base[i*3+2], l=Math.hypot(x,y,z)||1; return [x/l,y/l,z/l]; };
-  const cd=cand.map(dirOf), ga=Math.PI*(3-Math.sqrt(5));
-  const spiral=N=>{                                                // even points over the whole sphere,
-    const out=[];                                                  // kept only where they land on the hair area
-    for(let n=0;n<N;n++){
-      const y=1-2*(n+.5)/N, rr=Math.sqrt(1-y*y), th=n*ga, d=[Math.cos(th)*rr,y,Math.sin(th)*rr];
-      let best=-1, bd=-2;
-      for(let c=0;c<cand.length;c+=2){ const q=cd[c], dot=q[0]*d[0]+q[1]*d[1]+q[2]*d[2]; if(dot>bd){ bd=dot; best=c; } }
-      if(bd>.99) out.push(cand[best]);
-    }
-    return out;
-  };
-  // size the spiral so the hair area gets exactly one root per strand: evenly spaced, no gaps
-  const share=spiral(2000).length/2000;
-  const roots=share>0?spiral(Math.round(count/share)):[];
-  count=Math.min(count,roots.length)||count;
-  const stride=roots.length/count;
+  const plugVerts=fountain?top.filter(i=>angOf(i)<plug):[];
+  HAIR.plug=plug;
   for(let k=0;k<count;k++){
-    const h=make(); h.vi=roots.length?roots[Math.min(roots.length-1,Math.floor(k*stride))]:cand[(r()*cand.length)|0];
-    if(h.hang){ const by=base[h.vi*3+1], bz=base[h.vi*3+2];
-      if(bz>.2) h.len=Math.min(h.len, Math.max(.08,(by-.42)*1.15));   // bangs: front strands stop above the eyes
-    } h.tip=null; h.tv=[0,0,0]; h.ctrl=null; h.cv=[0,0,0];
+    const h=make();
+    if(fountain){
+      // root: a point in the plug, placed toward the side the strand leans to, so the fan opens cleanly
+      const rr=plug*Math.sqrt(r())*.85, ra=h.az+(r()-.5)*1.2, want=[Math.sin(rr)*Math.cos(ra),Math.cos(rr),Math.sin(rr)*Math.sin(ra)];
+      let best=plugVerts[0], bd=-2;
+      for(let c=0;c<plugVerts.length;c+=2){ const i=plugVerts[c], x=base[i*3], y=base[i*3+1], z=base[i*3+2], l=Math.hypot(x,y,z), d=(x*want[0]+y*want[1]+z*want[2])/l; if(d>bd){ bd=d; best=i; } }
+      h.vi=best;
+      if(h.dir) h.tilt=[h.dir[0]*1.8, h.dir[1]*1.8-1, h.dir[2]*1.8];   // the surface normal up top is ~straight up: lean it into the spray
+    } else h.vi=h.vi??top[0];
+    h.tip=null; h.tv=[0,0,0]; h.ctrl=null; h.cv=[0,0,0];
     h.w*=1.25;
     const kv=[r()-.5,r()-.5,r()-.5], kl=Math.hypot(...kv)||1;
     h.kink={v:kv.map(q=>q/kl), f:2.5+r()*3, ph:r()*6.28, amp:h.w*(.15+r()*.2)};
@@ -831,20 +829,14 @@ function buildHair(){
 }
 function shadeUnderHair(){
   hairShade.fill(0);
-  if(state.hair!=='none' && HAIR.length){
-    const roots=HAIR.map(h=>[base[h.vi*3],base[h.vi*3+1],base[h.vi*3+2]]), acc=new Float32Array(NV);
-    // how far apart neighbouring roots are in this style sets how far each root's tint reaches
-    let nn=0;
-    for(const q of roots){ let m=1e9; for(const o of roots){ if(o===q) continue; const d2=(o[0]-q[0])**2+(o[1]-q[1])**2+(o[2]-q[2])**2; if(d2>1e-8&&d2<m) m=d2; } nn+=Math.min(m,.05); }
-    const sig2=Math.max(.004, 1.6*nn/roots.length), cut=sig2*5;
+  const plug=HAIR.plug||0;
+  if(state.hair!=='none' && plug>0){
+    // just the plug the strands come out of, fading out before its edge
     for(let i=0;i<NV;i++){
-      const x=base[i*3], y=base[i*3+1], z=base[i*3+2]; let a=0;
-      for(const q of roots){ const d2=(x-q[0])**2+(y-q[1])**2+(z-q[2])**2; if(d2<cut) a+=Math.exp(-d2/sig2); }
-      acc[i]=a;
+      const x=base[i*3], y=base[i*3+1], z=base[i*3+2]; if(y<0) continue;
+      const a=Math.atan2(Math.hypot(x,z), y), t=Math.min(1,Math.max(0,(plug*.95-a)/(plug*.4)));
+      hairShade[i]=t*t*(3-2*t);
     }
-    // scale to this style's own density (sparser styles cover more ball with fewer strands)
-    const inside=Array.from(acc).filter(v=>v>.05).sort((p,q)=>p-q), typical=inside.length?inside[inside.length>>1]:1;
-    for(let i=0;i<NV;i++){ const t=Math.min(1,Math.max(0,(acc[i]/typical-.25)/.45)); hairShade[i]=t*t*(3-2*t); }
   }
   geo.attributes.aHair.needsUpdate=true;
 }
@@ -862,15 +854,13 @@ function updateHair(acc){
     let target, cl;
     let hug=null;
     if(s.hang){
-      // "down the head": straight down projected onto the surface, or outward at the crown
-      const n=[N[i],N[i+1],N[i+2]];
-      let tdn=[ n[0]*n[1], -1+n[1]*n[1], n[2]*n[1] ];               // (0,-1,0) minus its normal part
-      let tl=Math.hypot(...tdn);
-      if(tl<.25){ const o=s.out; const od=o[0]*n[0]+o[1]*n[1]+o[2]*n[2]; tdn=[o[0]-n[0]*od,o[1]-n[1]*od,o[2]-n[2]*od]; tl=Math.hypot(...tdn)||1; }
-      tdn=tdn.map(v=>v/tl);
-      const L=s.len, sag=L*L*.45;                                   // bend back toward the ball as it curves away
-      target=[r[0]+tdn[0]*L-n[0]*sag+n[0]*.035, r[1]+tdn[1]*L-n[1]*sag+n[1]*.035, r[2]+tdn[2]*L-n[2]*sag+n[2]*.035];
-      hug=[r[0]+tdn[0]*L*.5-n[0]*sag*.22+n[0]*.03, r[1]+tdn[1]*L*.5-n[1]*sag*.22+n[1]*.03, r[2]+tdn[2]*L*.5-n[2]*sag*.22+n[2]*.03];
+      // Lie along the head: walk down the egg's outline from the root toward this strand's
+      // heading, the length of the strand, sitting a little above the surface (layered).
+      const o=s.out, t0=Math.atan2(Math.hypot(r[0],r[2]),r[1]), t1=Math.min(2.25,t0+s.len/1.05), dt=t1-t0;
+      const surf=t=>{ const k=Math.sin(t)*(1-.09*Math.cos(t)); return [o[0]*k, 1.12*Math.cos(t), o[2]*k*.95]; };
+      const tip=surf(t1), mid=surf((t0+t1)/2), up=1+s.lift, bow=up/Math.cos(dt/2);
+      target=[tip[0]*up, tip[1]*up, tip[2]*up];
+      hug=[mid[0]*bow, mid[1]*bow, mid[2]*bow];
       cl=.5;
     } else {
       target=[r[0]+d[0]*s.len, r[1]+d[1]*s.len-s.len*s.droop, r[2]+d[2]*s.len]; cl=.55;
