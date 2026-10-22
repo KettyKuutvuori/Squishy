@@ -355,27 +355,32 @@ geo.setAttribute('aComp', new THREE.BufferAttribute(comp,1));
 const hairShade = new Float32Array(NV);                  // how much hair sits over each bit of skin (0..1)
 geo.setAttribute('aHair', new THREE.BufferAttribute(hairShade,1));
 const bumpU = { base:{value:1}, wr:{value:0}, grain:{value:null}, grainScale:{value:0} };
+const hairColU = { value:new THREE.Color(1,1,1) };
 geo.setAttribute('color', new THREE.BufferAttribute(aoCol,3));
 const mat = new THREE.MeshPhysicalMaterial({ map:faceTex, color:0xffffff, vertexColors:true });
 mat.onBeforeCompile = sh => {
   sh.uniforms.uGrain=bumpU.grain; sh.uniforms.uGrainScale=bumpU.grainScale;
-  sh.uniforms.uBumpBase=bumpU.base; sh.uniforms.uBumpWr=bumpU.wr;
+  sh.uniforms.uBumpBase=bumpU.base; sh.uniforms.uBumpWr=bumpU.wr; sh.uniforms.uHairCol=hairColU;
   sh.vertexShader = sh.vertexShader
     .replace('#include <common>','#include <common>\nattribute float aFront;\nvarying float vFront;\nattribute float aComp;\nvarying float vComp;\nattribute float aHair;\nvarying float vHair;')
     .replace('#include <uv_vertex>','#include <uv_vertex>\nvFront = aFront; vComp = aComp; vHair = aHair;');
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>','#include <common>\nvarying float vFront;\nvarying float vComp;\nvarying float vHair;\nuniform float uBumpBase;\nuniform float uBumpWr;\nuniform sampler2D uGrain;\nuniform float uGrainScale;')
+    .replace('#include <common>','#include <common>\nvarying float vFront;\nvarying float vComp;\nvarying float vHair;\nuniform vec3 uHairCol;\nuniform float uBumpBase;\nuniform float uBumpWr;\nuniform sampler2D uGrain;\nuniform float uGrainScale;')
     // creases appear only where the skin is compressed: scale the bump per pixel
     .replace('#include <bumpmap_pars_fragment>','#define dHdxy_fwd dHdxy_fwd_raw\n#include <bumpmap_pars_fragment>\n#undef dHdxy_fwd\nvec2 grainGradient(){ vec2 dx=dFdx(vUv), dy=dFdy(vUv); float h=texture2D(uGrain,vUv).r; return uGrainScale*vec2(texture2D(uGrain,vUv+dx).r-h,texture2D(uGrain,vUv+dy).r-h); }\n#define dHdxy_fwd() (dHdxy_fwd_raw()*(uBumpBase+uBumpWr*vComp)+grainGradient())')
     .replace('#include <color_fragment>',`#ifdef USE_COLOR
       diffuseColor.rgb *= mix(vColor,vec3(1.0),texture2D(map,vUv).a*vFront);
     #endif`)
+    // the dyed scalp under the hair is matte: no rubber shine showing through the strands
+    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor = mix( roughnessFactor, 1.0, clamp(vHair*1.4,0.0,1.0) );')
+    .replace('#include <lights_physical_fragment>','#include <lights_physical_fragment>\n#ifdef CLEARCOAT\n  material.clearcoat *= 1.0 - clamp(vHair*1.4,0.0,1.0);\n#endif\nmaterial.specularColor *= 1.0 - .8*clamp(vHair*1.4,0.0,1.0);')
     .replace('#include <map_fragment>',`#ifdef USE_MAP
       vec4 texelColor = texture2D( map, vUv );
       texelColor = mapTexelToLinear( texelColor );
       diffuseColor.rgb = mix( diffuseColor.rgb, texelColor.rgb, texelColor.a * vFront );
     #endif
-    diffuseColor.rgb *= 1.0 - .42*vHair;`);
+    // the scalp under the hair is dyed the hair colour and in shade, so gaps read as more hair
+    diffuseColor.rgb = mix( diffuseColor.rgb, uHairCol*.55, clamp(vHair*1.25,0.0,1.0) );`);
 };
 const ball = new THREE.Mesh(geo, mat);
 ball.castShadow = true;
@@ -756,17 +761,42 @@ function buildHair(){
   const pick=fn=>{ const c=[]; for(let i=0;i<NV;i++) if(fn(base[i*3],base[i*3+1],base[i*3+2],baseN[i*3+1])) c.push(i); return c; };
   const faceZone=(x,y,z)=>z>.45&&y<.5;       // keep the face clear
   let cand,count,make;
-  if(st==='tuft'){ SEG=10; count=150; cand=pick((x,y,z,ny)=>ny>.74);
-    make=()=>({len:.19+r()*.17,w:.024+r()*.008,tilt:[(r()-.5)*.85,(r()-.1)*.3,(r()-.5)*.85],droop:.08,k:.1}); }
-  else if(st==='mohawk'){ SEG=8; count=160; cand=pick((x,y,z,ny)=>Math.abs(x)<.12&&y>.25);
+  if(st==='tuft'){ SEG=10; count=210; cand=pick((x,y,z,ny)=>ny>.74);
+    make=()=>({len:.19+r()*.17,w:.024+r()*.008,tilt:[(r()-.5)*.7,.55+r()*.35,(r()-.5)*.7],droop:.06,k:.1}); }
+  else if(st==='mohawk'){ SEG=8; count=200; cand=pick((x,y,z,ny)=>Math.abs(x)<.12&&y>.5);
     make=()=>({len:.18+r()*.14,w:.026+r()*.008,tilt:[(r()-.5)*.18,.25,(r()-.5)*.3],droop:.06,k:.12}); }
-  else if(st==='curls'){ SEG=30; count=170; cand=pick((x,y,z,ny)=>ny>.38&&!faceZone(x,y,z));
+  else if(st==='curls'){ SEG=24; count=340; cand=pick((x,y,z,ny)=>ny>.38&&!faceZone(x,y,z));
     make=()=>({len:.13+r()*.09,w:.02+r()*.006,tilt:[(r()-.5)*.6,.1,(r()-.5)*.6],droop:.05,k:.1,curl:{amp:.032+r()*.018,f:9+r()*4,ph:r()*6.28}}); }
-  else { SEG=12; count=220; cand=pick((x,y,z,ny)=>ny>.28&&!faceZone(x,y,z));
-    make=()=>{ const a=r()*6.283; return {len:.42+r()*.26,w:.022+r()*.006,tilt:[0,0,0],droop:0,k:.05,hang:true,out:[Math.cos(a),0,Math.sin(a)]}; }; }
+  else { SEG=10; count=900; cand=pick((x,y,z,ny)=>ny>.28&&!faceZone(x,y,z));
+    make=()=>{ const a=r()*6.283;
+      const short=r()<.3;                                      // a short layer that covers the crown
+      return {len:short?.16+r()*.1:.42+r()*.26,w:.026+r()*.007,tilt:[0,0,0],droop:0,k:.05,hang:true,out:[Math.cos(a),0,Math.sin(a)]}; }; }
   const baseC=new THREE.Color(HAIR_COLORS[state.hairColor].base);
+  hairColU.value.copy(baseC).convertSRGBToLinear();
+  // Spread roots evenly over the hair area. The mesh is denser toward the face, so picking
+  // random vertices clustered hair at the front and left bald patches on top and at the back.
+  const dirOf=i=>{ const x=base[i*3], y=base[i*3+1], z=base[i*3+2], l=Math.hypot(x,y,z)||1; return [x/l,y/l,z/l]; };
+  const cd=cand.map(dirOf), ga=Math.PI*(3-Math.sqrt(5));
+  const spiral=N=>{                                                // even points over the whole sphere,
+    const out=[];                                                  // kept only where they land on the hair area
+    for(let n=0;n<N;n++){
+      const y=1-2*(n+.5)/N, rr=Math.sqrt(1-y*y), th=n*ga, d=[Math.cos(th)*rr,y,Math.sin(th)*rr];
+      let best=-1, bd=-2;
+      for(let c=0;c<cand.length;c+=2){ const q=cd[c], dot=q[0]*d[0]+q[1]*d[1]+q[2]*d[2]; if(dot>bd){ bd=dot; best=c; } }
+      if(bd>.99) out.push(cand[best]);
+    }
+    return out;
+  };
+  // size the spiral so the hair area gets exactly one root per strand: evenly spaced, no gaps
+  const share=spiral(2000).length/2000;
+  const roots=share>0?spiral(Math.round(count/share)):[];
+  count=Math.min(count,roots.length)||count;
+  const stride=roots.length/count;
   for(let k=0;k<count;k++){
-    const h=make(); h.vi=cand[(r()*cand.length)|0]; h.tip=null; h.tv=[0,0,0]; h.ctrl=null; h.cv=[0,0,0];
+    const h=make(); h.vi=roots.length?roots[Math.min(roots.length-1,Math.floor(k*stride))]:cand[(r()*cand.length)|0];
+    if(h.hang){ const by=base[h.vi*3+1], bz=base[h.vi*3+2];
+      if(bz>.2) h.len=Math.min(h.len, Math.max(.08,(by-.42)*1.15));   // bangs: front strands stop above the eyes
+    } h.tip=null; h.tv=[0,0,0]; h.ctrl=null; h.cv=[0,0,0];
     h.w*=1.25;
     const kv=[r()-.5,r()-.5,r()-.5], kl=Math.hypot(...kv)||1;
     h.kink={v:kv.map(q=>q/kl), f:2.5+r()*3, ph:r()*6.28, amp:h.w*(.15+r()*.2)};
@@ -802,12 +832,19 @@ function buildHair(){
 function shadeUnderHair(){
   hairShade.fill(0);
   if(state.hair!=='none' && HAIR.length){
-    const roots=HAIR.map(h=>[base[h.vi*3],base[h.vi*3+1],base[h.vi*3+2]]);
+    const roots=HAIR.map(h=>[base[h.vi*3],base[h.vi*3+1],base[h.vi*3+2]]), acc=new Float32Array(NV);
+    // how far apart neighbouring roots are in this style sets how far each root's tint reaches
+    let nn=0;
+    for(const q of roots){ let m=1e9; for(const o of roots){ if(o===q) continue; const d2=(o[0]-q[0])**2+(o[1]-q[1])**2+(o[2]-q[2])**2; if(d2>1e-8&&d2<m) m=d2; } nn+=Math.min(m,.05); }
+    const sig2=Math.max(.004, 1.6*nn/roots.length), cut=sig2*5;
     for(let i=0;i<NV;i++){
-      const x=base[i*3], y=base[i*3+1], z=base[i*3+2]; let acc=0;
-      for(const q of roots){ const d2=(x-q[0])**2+(y-q[1])**2+(z-q[2])**2; if(d2<.06) acc+=Math.exp(-d2/.012); }
-      hairShade[i]=Math.min(1,acc*.09);
+      const x=base[i*3], y=base[i*3+1], z=base[i*3+2]; let a=0;
+      for(const q of roots){ const d2=(x-q[0])**2+(y-q[1])**2+(z-q[2])**2; if(d2<cut) a+=Math.exp(-d2/sig2); }
+      acc[i]=a;
     }
+    // scale to this style's own density (sparser styles cover more ball with fewer strands)
+    const inside=Array.from(acc).filter(v=>v>.05).sort((p,q)=>p-q), typical=inside.length?inside[inside.length>>1]:1;
+    for(let i=0;i<NV;i++){ const t=Math.min(1,Math.max(0,(acc[i]/typical-.25)/.45)); hairShade[i]=t*t*(3-2*t); }
   }
   geo.attributes.aHair.needsUpdate=true;
 }
@@ -823,9 +860,17 @@ function updateHair(acc){
     const i=s.vi*3, r=[pos[i],pos[i+1],pos[i+2]];
     let d=[N[i]+s.tilt[0],N[i+1]+s.tilt[1],N[i+2]+s.tilt[2]]; const dl=Math.hypot(...d)||1; d=d.map(v=>v/dl);
     let target, cl;
+    let hug=null;
     if(s.hang){
-      let o=[r[0],0,r[2]]; const ol=Math.hypot(o[0],o[2]); o=ol>.15?[o[0]/ol,0,o[2]/ol]:s.out;
-      target=[r[0]+d[0]*s.len*.3+o[0]*s.len*.42, r[1]+d[1]*s.len*.3-s.len*.72, r[2]+d[2]*s.len*.3+o[2]*s.len*.42];
+      // "down the head": straight down projected onto the surface, or outward at the crown
+      const n=[N[i],N[i+1],N[i+2]];
+      let tdn=[ n[0]*n[1], -1+n[1]*n[1], n[2]*n[1] ];               // (0,-1,0) minus its normal part
+      let tl=Math.hypot(...tdn);
+      if(tl<.25){ const o=s.out; const od=o[0]*n[0]+o[1]*n[1]+o[2]*n[2]; tdn=[o[0]-n[0]*od,o[1]-n[1]*od,o[2]-n[2]*od]; tl=Math.hypot(...tdn)||1; }
+      tdn=tdn.map(v=>v/tl);
+      const L=s.len, sag=L*L*.45;                                   // bend back toward the ball as it curves away
+      target=[r[0]+tdn[0]*L-n[0]*sag+n[0]*.035, r[1]+tdn[1]*L-n[1]*sag+n[1]*.035, r[2]+tdn[2]*L-n[2]*sag+n[2]*.035];
+      hug=[r[0]+tdn[0]*L*.5-n[0]*sag*.22+n[0]*.03, r[1]+tdn[1]*L*.5-n[1]*sag*.22+n[1]*.03, r[2]+tdn[2]*L*.5-n[2]*sag*.22+n[2]*.03];
       cl=.5;
     } else {
       target=[r[0]+d[0]*s.len, r[1]+d[1]*s.len-s.len*s.droop, r[2]+d[2]*s.len]; cl=.55;
@@ -840,7 +885,7 @@ function updateHair(acc){
     s.tv[1]-=.0006*s.len;
     { const dx=s.tip[0]-r[0], dy=s.tip[1]-r[1], dz=s.tip[2]-r[2], dd=Math.hypot(dx,dy,dz), mx=s.len*1.08;
       if(dd>mx){ const f=mx/dd; s.tip=[r[0]+dx*f,r[1]+dy*f,r[2]+dz*f]; s.tv=s.tv.map(v=>v*.5); } }
-    const cTarget=[r[0]+d[0]*s.len*cl, r[1]+d[1]*s.len*cl-s.len*(s.hang?.12:s.droop*.2), r[2]+d[2]*s.len*cl];
+    const cTarget=hug||[r[0]+d[0]*s.len*cl, r[1]+d[1]*s.len*cl-s.len*s.droop*.2, r[2]+d[2]*s.len*cl];
     if(!s.ctrl) s.ctrl=cTarget.slice();
     for(let a=0;a<3;a++){
       s.cv[a]=(s.cv[a]+(cTarget[a]-s.ctrl[a])*s.k*3.2*s.stiff-acc[a]*.18)*.72;
@@ -868,7 +913,7 @@ function updateHair(acc){
       if(j===0){ let n=[T[1]*0-T[2]*1, T[2]*0-T[0]*0, T[0]*1-T[1]*0]; if(Math.hypot(...n)<.1) n=[0,T[2],-T[1]]; const nl=Math.hypot(...n); s._n=n.map(v=>v/nl); }
       else { const n=s._n, dt=n[0]*T[0]+n[1]*T[1]+n[2]*T[2]; let m2=[n[0]-dt*T[0],n[1]-dt*T[1],n[2]-dt*T[2]]; const ml=Math.hypot(...m2)||1; s._n=m2.map(v=>v/ml); }
       const N1=s._n, N2=[T[1]*N1[2]-T[2]*N1[1], T[2]*N1[0]-T[0]*N1[2], T[0]*N1[1]-T[1]*N1[0]];
-      const rad=s.w*.5*(1-.12*t)*(j===SEG?.55:1);                     // rounded, slightly frayed tip
+      const rad=s.w*.5*(1-.12*t)*(1+.35*Math.max(0,1-t*5))*(j===SEG?.55:1);                     // rounded, slightly frayed tip
       for(let q=0;q<=RAD;q++){
         const ang=q/RAD*Math.PI*2, ca=Math.cos(ang), sa=Math.sin(ang), v=((k*(SEG+1)+j)*(RAD+1)+q)*3;
         for(let a=0;a<3;a++){ const nn=N1[a]*ca+N2[a]*sa; hNor[v+a]=nn; hPos[v+a]=p[a]+nn*rad; }
