@@ -166,10 +166,6 @@ h1 span{color:var(--accent)}
     </div>
     <div class="panel" data-panel="face" hidden>
       <div class="thumbs" id="presetRow" role="radiogroup" aria-label="Face"></div>
-      <div class="sect" id="exprGroup" hidden>
-        <span class="label">Expression</span>
-        <div class="thumbs expr" id="exprRow" role="radiogroup" aria-label="Expression"></div>
-      </div>
       <div class="sect" id="styleGroup" hidden>
         <span class="label">On the ball</span>
         <div class="seg" id="styleSeg">
@@ -1275,14 +1271,14 @@ function loadFile(f){
     state.src=img; state.srcMarks=mk; state.expr='none';
     if(!mk){
       status(failed?'The face finder didn’t load. Line your eyes up on the dotted line instead.':'Couldn’t spot a face. Line your eyes up on the dotted line instead.',5000);
-      state.marks=null; state.fromFrame=true; buildExprRow(); openCrop(img,null); return;
+      state.marks=null; state.fromFrame=true; openCrop(img,null); return;
     }
     state.fromFrame=false;
     status('Found you!',1600);
     state.img=img; state.marks=mk; state.crop=autoCrop(img,mk);
     $('adjust').hidden=false;
     setStyle('features');                       // a new photo always goes on printed
-    buildExprRow(); setPreset('me'); wobble(.06);
+    setPreset('me'); wobble(.06);
   };
   im.onerror=()=>status('That file didn’t open as an image. Try a JPG or PNG.',4000);
   im.src=URL.createObjectURL(f);
@@ -1334,7 +1330,6 @@ $('applyCrop').onclick=()=>{
     state.srcMarks=marksFromL(L);
     state.marks=state.expr==='none'?state.srcMarks:marksFromL(exprPoints(L,state.expr));
     if(state.style==='photo') setStyle('features');
-    buildExprRow();
   }
   if(state.preset!=='me') setPreset('me'); else buildFace();
   renderPresetRow(); wobble(.06);
@@ -1466,7 +1461,6 @@ function paintPresetFace(c,key,T){
 /* ================= expressions =================
    Move the 68 face points, then warp the photo to follow them (piecewise-affine).
    The cut-out features and the sculpt both read the moved points, so they follow too. */
-const EXPRS=[['none','Original'],['smile','Smile'],['wink','Wink'],['kiss','Kiss'],['wow','Surprised'],['grumpy','Grumpy'],['sleepy','Sleepy']];
 function exprPoints(L,key){
   const D=L.map(q=>q.slice());
   if(key==='none') return D;
@@ -1550,17 +1544,6 @@ function warpImage(src,L,D){
   }
   return out;
 }
-function setExpr(key){
-  if(!state.srcMarks) return;
-  state.expr=key;
-  const D=exprPoints(state.srcMarks.L,key);
-  state.img=key==='none'?state.src:warpImage(state.src,state.srcMarks.L,D);
-  state.marks=key==='none'?state.srcMarks:marksFromL(D);
-  $('exprRow').querySelectorAll('.thumb').forEach(b=>b.setAttribute('aria-checked',b.dataset.key===key));
-  if(state.preset!=='me') setPreset('me'); else buildFace();
-  wobble(.04);
-}
-
 /* ================= thumbnails ================= */
 function thumbCanvas(btn){ const c=document.createElement('canvas'); c.width=c.height=104; btn.appendChild(c); return c.getContext('2d'); }
 function shadeBall(c,S,hex){
@@ -1621,28 +1604,11 @@ function renderPresetRow(){
     row.appendChild(b);
   }
 }
-function buildExprRow(){
-  const row=$('exprRow'); row.innerHTML='';
-  const ok=!!(state.src&&state.srcMarks); $('exprGroup').hidden=!ok||state.preset!=='me';
-  if(!ok) return;
-  // work on a small crop of the face so the previews are quick
-  const r=faceCrop(state.src,state.srcMarks.L), S=160, sm=document.createElement('canvas'); sm.width=sm.height=S;
-  sm.getContext('2d').drawImage(state.src,r.sx,r.sy,r.side,r.side,0,0,S,S);
-  const Ls=state.srcMarks.L.map(q=>[(q[0]-r.sx)/r.side*S,(q[1]-r.sy)/r.side*S]);
-  for(const [key,name] of EXPRS){
-    const b=document.createElement('button'); b.className='thumb'; b.dataset.key=key; b.setAttribute('role','radio');
-    b.setAttribute('aria-label',name); b.title=name; b.setAttribute('aria-checked',state.expr===key);
-    const c=thumbCanvas(b), w=key==='none'?sm:warpImage(sm,Ls,exprPoints(Ls,key));
-    c.save(); c.beginPath(); c.arc(52,52,52,0,6.3); c.clip(); c.drawImage(w,0,0,S,S,0,0,104,104); c.restore();
-    b.onclick=()=>setExpr(key);
-    row.appendChild(b);
-  }
-}
 function setPreset(key){
   state.preset=key;
   $('presetRow').querySelectorAll('.thumb').forEach(b=>b.setAttribute('aria-checked',b.dataset.key===key));
   const me=key==='me';
-  $('swatches').hidden=!me; $('exprGroup').hidden=!me||!state.srcMarks;
+  $('swatches').hidden=!me;
   if(!state.hairTouched) setHair(me?M().hair:'none');
   const pm=!me&&PRESETS[key].mat;                                     // some presets come with their own material
   if(pm && state.mat!==pm){ state.mat=pm; state.color=0; pressed('matSeg','mat',pm); buildSwatches(); }
