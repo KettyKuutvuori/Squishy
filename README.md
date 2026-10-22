@@ -14,7 +14,7 @@ Open `index.html` in a browser (it works straight from disk), or serve the folde
 
 ## Customize
 
-- **Material:** Squishy (foam that wrinkles when squeezed), Foam (slow memory-foam rebound), Bouncy plastic, or Clay (keeps the shape you give it).
+- **Material:** with a photo on, the first color swatch is your own skin tone, sampled from the cheeks, forehead and nose. Materials: Squishy (foam that wrinkles when squeezed), Foam (slow memory-foam rebound), Bouncy plastic, or Clay (keeps the shape you give it).
 - **Photo:** upload a photo. Your face is found automatically and its eyes and mouth are set into the ball; you can also put on the whole photo, an ink print or a sculpted 3D face, and adjust the framing.
 - **Face:** your photo or a preset (Smiley, Frog, Chick, Kitty, Puppy, Panda, Piggy, Bear).
 - **Hair:** chunky wool yarn: None, Tuft, Mohawk, Curls or Shaggy, in six colors.
