@@ -14,9 +14,8 @@ Open `index.html` in a browser, or serve the folder with any static host (GitHub
 
 ## Customize
 
-- **Photo:** upload a photo. The face is found automatically, and the eyes and mouth are cut out and set into the ball. You can also put the whole photo, an ink print or a sculpted 3D face on the ball.
 - **Material:** Squishy (foam that wrinkles when squeezed), Foam (slow memory-foam rebound), Bouncy plastic, or Clay (keeps the shape you give it).
-- **Face:** presets (Smiley, Frog, Chick, Kitty, Puppy, Panda, Piggy, Bear) and expressions for your photo (Smile, Wink, Kiss, Surprised, Grumpy, Sleepy).
+- **Face:** pick a preset (Smiley, Frog, Chick, Kitty, Puppy, Panda, Piggy, Bear) or upload your own photo. Your face is found automatically and its eyes and mouth are set into the ball; you can also put on the whole photo, an ink print or a sculpted 3D face, and try expressions (Smile, Wink, Kiss, Surprised, Grumpy, Sleepy).
 - **Hair:** None, Tuft, Mohawk, Curls or Shaggy, in six colors.
 
 Sound and vibration can be muted with the speaker button (or the M key).
