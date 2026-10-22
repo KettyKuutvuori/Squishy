@@ -1155,7 +1155,8 @@ $('hairSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); i
 $('matSeg').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b||b.dataset.mat===state.mat) return;
   state.mat=b.dataset.mat; state.color=0; pressed('matSeg','mat',state.mat);
-  setStyle(M().face);
+  // with a photo on the ball every material prints it; only the bare ball gets the material's own face
+  setStyle(state.src ? (state.style==='sculpt'?'features':state.style) : M().face);
   if(!state.hairTouched) setHair(state.preset==='me'?M().hair:'none');
   buildSwatches(); applyMaterial(); buildFace(); pos.set(rest); vel.fill(0);
   if(body.y<.02) body.vy=.07;    // a little hop to show off the new material
@@ -1280,7 +1281,7 @@ function loadFile(f){
     status('Found you!',1600);
     state.img=img; state.marks=mk; state.crop=autoCrop(img,mk);
     $('adjust').hidden=false;
-    if(state.style!=='sculpt') setStyle('features');
+    setStyle('features');                       // a new photo always goes on printed
     buildExprRow(); setPreset('me'); wobble(.06);
   };
   im.onerror=()=>status('That file didn’t open as an image. Try a JPG or PNG.',4000);
