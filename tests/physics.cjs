@@ -11,7 +11,7 @@ function simulation(material,hz){
     const xLim=10,yLim=10,thud=()=>{},haptic=()=>{};
     const group={rotation:{},position:{set(){}},updateMatrixWorld(){}};
     const key={position:{set(){}},target:{position:{set(){}}}};
-    const step=()=>ticks++,updateHair=()=>{},renderContactShadow=()=>{},
+    const step=()=>ticks++,updateHair=()=>{},updateAnimalDetails=()=>{},renderContactShadow=()=>{},
       renderer={render(){}},scene={},camera={},requestAnimationFrame=()=>{};
   `+section('const GRAV=','/* Hold to squeeze:')+
   section('const FIXED_MS=','document.addEventListener(\'visibilitychange\''),context);
