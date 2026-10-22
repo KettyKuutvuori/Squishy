@@ -757,19 +757,19 @@ function buildHair(){
   const faceZone=(x,y,z)=>z>.45&&y<.5;       // keep the face clear
   let cand,count,make;
   if(st==='tuft'){ SEG=10; count=150; cand=pick((x,y,z,ny)=>ny>.74);
-    make=()=>({len:.3+r()*.28,w:.024+r()*.008,tilt:[(r()-.5)*1.3,(r()-.2)*.3,(r()-.5)*1.3],droop:.1,k:.1}); }
+    make=()=>({len:.19+r()*.17,w:.024+r()*.008,tilt:[(r()-.5)*.85,(r()-.1)*.3,(r()-.5)*.85],droop:.08,k:.1}); }
   else if(st==='mohawk'){ SEG=8; count=160; cand=pick((x,y,z,ny)=>Math.abs(x)<.12&&y>.25);
-    make=()=>({len:.26+r()*.22,w:.026+r()*.008,tilt:[(r()-.5)*.18,.25,(r()-.5)*.3],droop:.06,k:.12}); }
+    make=()=>({len:.18+r()*.14,w:.026+r()*.008,tilt:[(r()-.5)*.18,.25,(r()-.5)*.3],droop:.06,k:.12}); }
   else if(st==='curls'){ SEG=30; count=170; cand=pick((x,y,z,ny)=>ny>.38&&!faceZone(x,y,z));
-    make=()=>({len:.18+r()*.12,w:.02+r()*.006,tilt:[(r()-.5)*.6,.1,(r()-.5)*.6],droop:.05,k:.1,curl:{amp:.045+r()*.025,f:9+r()*4,ph:r()*6.28}}); }
+    make=()=>({len:.13+r()*.09,w:.02+r()*.006,tilt:[(r()-.5)*.6,.1,(r()-.5)*.6],droop:.05,k:.1,curl:{amp:.032+r()*.018,f:9+r()*4,ph:r()*6.28}}); }
   else { SEG=12; count=220; cand=pick((x,y,z,ny)=>ny>.28&&!faceZone(x,y,z));
-    make=()=>{ const a=r()*6.283; return {len:.6+r()*.4,w:.022+r()*.006,tilt:[0,0,0],droop:0,k:.05,hang:true,out:[Math.cos(a),0,Math.sin(a)]}; }; }
+    make=()=>{ const a=r()*6.283; return {len:.42+r()*.26,w:.022+r()*.006,tilt:[0,0,0],droop:0,k:.05,hang:true,out:[Math.cos(a),0,Math.sin(a)]}; }; }
   const baseC=new THREE.Color(HAIR_COLORS[state.hairColor].base);
   for(let k=0;k<count;k++){
     const h=make(); h.vi=cand[(r()*cand.length)|0]; h.tip=null; h.tv=[0,0,0]; h.ctrl=null; h.cv=[0,0,0];
     h.w*=1.25;
     const kv=[r()-.5,r()-.5,r()-.5], kl=Math.hypot(...kv)||1;
-    h.kink={v:kv.map(q=>q/kl), f:5+r()*6, ph:r()*6.28, amp:h.w*(.25+r()*.35)};
+    h.kink={v:kv.map(q=>q/kl), f:2.5+r()*3, ph:r()*6.28, amp:h.w*(.15+r()*.2)};
     h.stiff=.75+r()*.5;
     h.col=baseC.clone().offsetHSL((r()-.5)*.015,.05,(r()-.55)*.16).convertSRGBToLinear();
     HAIR.push(h);
@@ -838,7 +838,7 @@ function updateHair(acc){
     for(let a=0;a<3;a++){ s.tv[a]=(s.tv[a]+(target[a]-s.tip[a])*kk)*.78; s.tip[a]+=s.tv[a]; }
     // Gravity bends long strands more than short, stiff tufts.
     s.tv[1]-=.0006*s.len;
-    { const dx=s.tip[0]-r[0], dy=s.tip[1]-r[1], dz=s.tip[2]-r[2], dd=Math.hypot(dx,dy,dz), mx=s.len*1.25;
+    { const dx=s.tip[0]-r[0], dy=s.tip[1]-r[1], dz=s.tip[2]-r[2], dd=Math.hypot(dx,dy,dz), mx=s.len*1.08;
       if(dd>mx){ const f=mx/dd; s.tip=[r[0]+dx*f,r[1]+dy*f,r[2]+dz*f]; s.tv=s.tv.map(v=>v*.5); } }
     const cTarget=[r[0]+d[0]*s.len*cl, r[1]+d[1]*s.len*cl-s.len*(s.hang?.12:s.droop*.2), r[2]+d[2]*s.len*cl];
     if(!s.ctrl) s.ctrl=cTarget.slice();
