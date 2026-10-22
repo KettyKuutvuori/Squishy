@@ -679,28 +679,6 @@ function drawFeatures(f,T){
   }
   // Keep eye whites, iris, lips and teeth at their original colour.
 }
-function sculptFeatures(){
-  const T=HM, m=hmCv.getContext('2d'), h=new Float32Array(T*T), ao=new Float32Array(T*T).fill(1);
-  for(const ft of featureContours(T)){
-    m.setTransform(1,0,0,1,0,0); m.globalCompositeOperation='source-over'; m.clearRect(0,0,T,T);
-    m.fillStyle='#fff'; featurePath(m,ft.points); m.fill();
-    const pixels=m.getImageData(0,0,T,T).data, mask=new Float32Array(T*T);
-    for(let i=0;i<mask.length;i++) mask[i]=pixels[i*4+3]/255;
-    const inside=boxBlur(boxBlur(mask,T,T,2),T,T,2), near=boxBlur(mask,T,T,4), wide=boxBlur(mask,T,T,8);
-    for(let i=0;i<h.length;i++){
-      const rim=Math.max(0,wide[i]-near[i]);
-      h[i]+=rim*.055-inside[i]*(ft.kind==='mouth'?.03:.018);
-      ao[i]=Math.min(ao[i],1-Math.max(0,near[i]-inside[i])*.4-rim*.24);
-    }
-  }
-  for(let i=0;i<NV;i++){
-    const u=uvArr[i*2],v=uvArr[i*2+1],depth=sampleH(h,u,v)*front[i];
-    for(let a=0;a<3;a++) rest[i*3+a]=base[i*3+a]+baseN[i*3+a]*depth;
-    const shade=1-(1-sampleH(ao,u,v))*front[i];
-    aoCol[i*3]=aoCol[i*3+1]=aoCol[i*3+2]=shade;
-  }
-  geo.attributes.color.needsUpdate=true;
-}
 
 function clearAO(){ aoCol.fill(1); geo.attributes.color.needsUpdate=true; }
 function buildFace(){
@@ -708,7 +686,7 @@ function buildFace(){
   const f=faceCv.getContext('2d'); f.clearRect(0,0,TEX,TEX);
   if(state.preset!=='me'){ applyPreset(f); faceTex.needsUpdate=true; awake=90; return; }
   if (state.style==='features' && state.img && state.marks){
-    rest.set(base); clearAO(); drawFeatures(f,TEX); sculptFeatures();
+    rest.set(base); clearAO(); drawFeatures(f,TEX);   // cut from the photo and printed flat: the ball stays smooth
   } else if (state.style==='sculpt'){
     const {h,ao}=heightField(), depth=.2;
     for(let i=0;i<NV;i++){
