@@ -457,6 +457,7 @@ function applyMaterial(){
   const m=M();
   if(state.preset==='me') mat.color.copy(new THREE.Color(COLOR().base).convertSRGBToLinear()); else mat.color.setRGB(1,1,1);
   mat.roughness=m.rough; mat.clearcoat=m.coat; mat.clearcoatRoughness=m.coatR; mat.envMapIntensity=m.env; mat.metalness=0;
+  if(!m.wr){ comp.fill(0); geo.attributes.aComp.needsUpdate=true; }
   if(m.wr){ mat.bumpMap=creaseTex; mat.bumpScale=m.wr; bumpU.base.value=m.wrBase; bumpU.wr.value=1; }
   else { mat.bumpMap=m.bump?grainTex:null; mat.bumpScale=m.bump; bumpU.base.value=1; bumpU.wr.value=0; }
   mat.needsUpdate = true;
@@ -1003,7 +1004,7 @@ function stepFingers(){
 }
 // compare each vertex's distance to its grid neighbours now vs at rest; shrinking = wrinkling
 function measureCompression(){
-  const R=WS+1;
+  const R=WS+1; let mx=0;
   for(let j=0;j<=HS;j++) for(let i=0;i<=WS;i++){
     const k=j*R+i, nb=[i<WS?k+1:k-1, j<HS?k+R:k-R];
     let c=0;
@@ -1013,9 +1014,10 @@ function measureCompression(){
       c=Math.max(c,1-d/d0);
     }
     const tgt=Math.min(1,Math.max(0,(c-.025)*4.5));
-    comp[k]+=(tgt-comp[k])*.35;
+    comp[k]+=(tgt-comp[k])*.35; if(comp[k]>mx) mx=comp[k];
   }
   geo.attributes.aComp.needsUpdate=true;
+  return mx;
 }
 function step(acc){
   const m=M();
@@ -1099,7 +1101,8 @@ function step(acc){
     const v=Math.abs(vel[i3])+Math.abs(vel[i3+1])+Math.abs(vel[i3+2]); if(v>maxV) maxV=v;
   }
   P.needsUpdate=true;
-  if(m.wr) measureCompression();
+  // keep simulating until the creases have smoothed out, so none get left frozen on a resting ball
+  if(m.wr && measureCompression()>.02) awake=Math.max(awake,5);
   geo.computeVertexNormals(); fixSeams();
   if(pointers.size||squeezing||fingers.length||ghosts.length||body.held||maxV>2e-5) awake=Math.max(awake,30); else awake--;
   return true;
@@ -1248,6 +1251,12 @@ function marksFromL(L){
   return { L, mid:[(le[0]+re[0])/2,(le[1]+re[1])/2], d:dist(le,re), ang,
     feats:[ {c:[mo[0]-up[0]*mW*.04,mo[1]-up[1]*mW*.04],rx:mW*.74,ry:Math.max(mH*.95,mW*.34),rot:ang,boost:1.22}, eye(le), eye(re) ] };
 }
+// the standard face points, mapped back into photo pixels through the current framing
+function frameLandmarks(){
+  const T=TEX, c=state.crop, k=(2*FACE.rx*T)/CROP.fw;
+  const ox=FACE.cx*T-FACE.rx*T+(c.ox-CROP.fl)*k, oy=FACE.cy*T-FACE.ry*T+(c.oy-CROP.ft)*k;
+  return templateL().map(q=>[(q[0]*T-ox)/(c.s*k),(q[1]*T-oy)/(c.s*k)]);
+}
 function autoCrop(img,mk){
   const k=(2*FACE.rx*TEX)/CROP.fw, s=(.2*TEX/k)/mk.d;
   const eyeY=CROP.h/2+(EYE_LINE-FACE.cy)/FACE.ry*(CROP.fh/2);
@@ -1262,9 +1271,14 @@ function loadFile(f){
     img.getContext('2d').drawImage(im,0,0,img.width,img.height); img.naturalWidth=img.width; img.naturalHeight=img.height;
     closePop(); status('Finding your face…');
     let mk=null;
-    try{ mk=await findFace(img); }catch(err){ console.error('Face detection failed:',err); mk=null; }
+    let failed=false;
+    try{ mk=await findFace(img); }catch(err){ console.error('Face detection failed:',err); mk=null; failed=true; }
     state.src=img; state.srcMarks=mk; state.expr='none';
-    if(!mk){ status('Couldn’t find a face automatically. Frame it by hand.',4000); state.marks=null; buildExprRow(); openCrop(img,null); return; }
+    if(!mk){
+      status(failed?'The face finder didn’t load. Line your eyes up on the dotted line instead.':'Couldn’t spot a face. Line your eyes up on the dotted line instead.',5000);
+      state.marks=null; state.fromFrame=true; buildExprRow(); openCrop(img,null); return;
+    }
+    state.fromFrame=false;
     status('Found you!',1600);
     state.img=img; state.marks=mk; state.crop=autoCrop(img,mk);
     $('adjust').hidden=false;
@@ -1314,6 +1328,15 @@ $('cancelCrop').onclick=()=>{ $('sheet').hidden=true; draft=null; };
 $('applyCrop').onclick=()=>{
   state.img=draft.img; state.crop={s:draft.base*draft.z,ox:draft.ox,oy:draft.oy};
   $('sheet').hidden=true; $('adjust').hidden=false; draft=null;
+  if(state.fromFrame){
+    // no detected face points: place them from the framing (eyes on the dotted line),
+    // so "Eyes & mouth" still cuts out the features and expressions still work
+    const L=frameLandmarks();
+    state.srcMarks=marksFromL(L);
+    state.marks=state.expr==='none'?state.srcMarks:marksFromL(exprPoints(L,state.expr));
+    if(state.style==='photo') setStyle('features');
+    buildExprRow();
+  }
   if(state.preset!=='me') setPreset('me'); else buildFace();
   renderPresetRow(); wobble(.06);
 };
