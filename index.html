@@ -357,7 +357,9 @@ mat.onBeforeCompile = sh => {
     .replace('#include <common>','#include <common>\nvarying float vFront;\nvarying float vComp;\nuniform float uBumpBase;\nuniform float uBumpWr;')
     // creases appear only where the skin is compressed: scale the bump per pixel
     .replace('#include <bumpmap_pars_fragment>','#define dHdxy_fwd dHdxy_fwd_raw\n#include <bumpmap_pars_fragment>\n#undef dHdxy_fwd\n#define dHdxy_fwd() (dHdxy_fwd_raw()*(uBumpBase+uBumpWr*vComp))')
-    .replace('#include <map_fragment>',`#ifdef USE_MAP
+    .replace('#include <color_fragment>','')
+    .replace('#include <map_fragment>',`#include <color_fragment>
+    #ifdef USE_MAP
       vec4 texelColor = texture2D( map, vUv );
       texelColor = mapTexelToLinear( texelColor );
       diffuseColor.rgb = mix( diffuseColor.rgb, texelColor.rgb, texelColor.a * vFront );
@@ -1350,13 +1352,14 @@ const V3=(x,y,z)=>{ const l=Math.hypot(x,y,z); return [x/l,y/l,z/l]; };
 const PROFILE={
   dome:t=>(1-t*t)*(1-t*t),
   cone:t=>(1-t)*Math.min(1,(1-t)*3.2),
-  flat:t=>{ const u=Math.min(1,Math.max(0,(1-t)/.3)); return u*u*(3-2*u); }
+  flat:t=>{ const u=Math.min(1,Math.max(0,(1-t)/.3)); return u*u*(3-2*u); },
+  ball:t=>{ const e=Math.min(1,(1-t)/.16); return Math.sqrt(Math.max(0,1-t*t))*e*e*(3-2*e); }   // a round dome with a soft crease where it meets the body
 };
 // where a direction on the ball lands in the face texture (0..1, y down)
 function texPos(d){ const y=d[1]*1.12, k=1+.09*(-d[1]); return [.5+d[0]*k/2.4, 1-(.5+y/2.4)]; }
 const PRESETS={
   smiley:{name:'Smiley', base:'#F6A8BB'},
-  frog:{name:'Frog', base:'#69B957', bumps:[[V3(-.36,.5,.78),.24,.2,'dome'],[V3(.36,.5,.78),.24,.2,'dome']]},
+  frog:{name:'Frog', base:'#5E8C3F', mat:'foam', round:true, eyeDomes:true, bumps:[[V3(-.38,.7,.6),.3,.3,'ball'],[V3(.38,.7,.6),.3,.3,'ball']]},
   chick:{name:'Chick', base:'#FFD45A', bumps:[[V3(0,-.02,1),.13,.17,'cone','#FF9437']]},
   kitty:{name:'Kitty', base:'#F4F1EB', bumps:[[V3(-.5,.82,.2),.28,.34,'cone','#9C9AA0'],[V3(.5,.82,.2),.28,.34,'cone','#9C9AA0']], cap:'#A7A5AB', inner:'#F2B5C1'},
   puppy:{name:'Puppy', base:'#E7C18D', bumps:[[V3(0,-.22,1),.33,.06,'dome','#F7E8CC'],[V3(0,-.07,1),.09,.07,'dome','#2B2320'],
@@ -1369,17 +1372,18 @@ const PRESETS={
 const lin=hex=>new THREE.Color(hex).convertSRGBToLinear();
 function applyPreset(f){
   const P=PRESETS[state.preset], bc=lin(P.base), tmp=new THREE.Color();
-  const bumps=(P.bumps||[]).map(b=>({c:b[0],r:b[1],h:b[2],prof:PROFILE[b[3]],col:b[4]?lin(b[4]):null}));
+  const bumps=(P.bumps||[]).map(b=>({c:b[0],r:b[1],h:b[2],prof:PROFILE[b[3]],col:b[4]?lin(b[4]):null,verts:[]}));
   const cap=P.cap?lin(P.cap):null, inner=P.inner?lin(P.inner):null;
   for(let i=0;i<NV;i++){
     const x=base[i*3], y=base[i*3+1], z=base[i*3+2], l=Math.hypot(x,y,z), d=[x/l,y/l,z/l];
     let disp=0; tmp.copy(bc);
+    if(P.round) disp+=-.17*Math.pow(Math.max(0,d[1]),1.3)+.07*(1-d[1]*d[1]);   // squat and round instead of egg-shaped
     if(cap){ // a grey cap over the back of a cat's head
       const t=Math.min(1,Math.max(0,(d[1]-.45-.35*d[2])/.12)); tmp.lerp(cap,t);
     }
     for(const b of bumps){
       const a=Math.acos(Math.max(-1,Math.min(1,d[0]*b.c[0]+d[1]*b.c[1]+d[2]*b.c[2]))), t=a/b.r;
-      if(t<1) disp+=b.h*b.prof(t);
+      if(t<1){ disp+=b.h*b.prof(t); b.verts.push(i); }
       if(b.col && t<1.08){
         const edge=Math.min(1,Math.max(0,(1.08-t)/.16));
         tmp.lerp(b.col,edge);
@@ -1390,6 +1394,23 @@ function applyPreset(f){
     aoCol[i*3]=tmp.r; aoCol[i*3+1]=tmp.g; aoCol[i*3+2]=tmp.b;
   }
   geo.attributes.color.needsUpdate=true;
+  // Eyes painted on domes: find where each dome faces the viewer and how much the front-on
+  // projection stretches there, so the painted eye comes out round on the 3D surface.
+  P._eyes = P.eyeDomes ? bumps.slice(0,2).map(b=>{
+    // the camera looks slightly down at the ball, so 'facing the viewer' tilts up a little
+    const vd=[0,.2,.98], fz=i=>rest[i*3]*vd[0]+rest[i*3+1]*vd[1]+rest[i*3+2]*vd[2];
+    let fi=b.verts[0]; for(const i of b.verts) if(fz(i)>fz(fi)) fi=i;
+    const X=rest[fi*3], Y=rest[fi*3+1], Z=rest[fi*3+2], R=.09;
+    const near=(tx,ty)=>{ let best=fi,bd=1e9; for(const i of b.verts){ if(rest[i*3+2]<Z-.25) continue; const d=(rest[i*3]-tx)**2+(rest[i*3+1]-ty)**2; if(d<bd){bd=d;best=i;} } return best; };
+    const uvOf=i=>[uvArr[i*2],1-uvArr[i*2+1]];
+    const [u0,v0]=uvOf(fi), A=near(X+R,Y), B=near(X,Y+R);
+    const dA=[rest[A*3]-X,rest[A*3+1]-Y], dB=[rest[B*3]-X,rest[B*3+1]-Y];
+    const tA=uvOf(A), tB=uvOf(B), det=dA[0]*dB[1]-dB[0]*dA[1]||1e-6;
+    // J maps a step on the dome (right, up) to a step in the texture: stretch and shear
+    const du=[tA[0]-u0,tB[0]-u0], dv=[tA[1]-v0,tB[1]-v0];
+    const J=[(du[0]*dB[1]-du[1]*dA[1])/det,(du[1]*dA[0]-du[0]*dB[0])/det,(dv[0]*dB[1]-dv[1]*dA[1])/det,(dv[1]*dA[0]-dv[0]*dB[0])/det];
+    return {u:u0, v:v0, J};
+  }) : null;
   paintPresetFace(f,state.preset,TEX);
 }
 // faces, drawn in face-texture units (eyes sit near y .45, mouth near .55)
@@ -1402,8 +1423,20 @@ function paintPresetFace(c,key,T){
   c.save();
   if(key==='smiley'){ eye(.42,.46,.024); eye(.58,.46,.024); arc(.5,.5,.07,.2*Math.PI,.8*Math.PI,.013); blush(.37,.53); blush(.63,.53); }
   else if(key==='frog'){
-    for(const sx of [-1,1]){ const [u,v]=texPos(V3(.36*sx,.4,.86)); E(u,v,.058,.058,'#FFFFFF'); E(u+.004*sx,v+.008,.032,.034,'#17151A'); E(u+.014,v-.006,.01,.01,'#FFFFFF'); }
-    arc(.5,.45,.12,.28*Math.PI,.72*Math.PI,.012); blush(.35,.5,'rgba(255,120,120,.35)'); blush(.65,.5,'rgba(255,120,120,.35)');
+    // fine darker speckles in the soft-touch skin
+    let sd=3; const rr=()=>((sd=(sd*16807)%2147483647)/2147483647);
+    for(let i=0;i<900;i++){ c.fillStyle=`rgba(70,95,45,${.12+rr()*.18})`; c.beginPath(); c.arc(rr()*T,rr()*T,(.0012+rr()*.0022)*T,0,6.283); c.fill(); }
+    if(T===TEX && PRESETS.frog._eyes) for(const e of PRESETS.frog._eyes){
+      // draw in the dome's own units (x right, y up); the measured mapping makes them land round
+      c.save(); c.translate(e.u*T,e.v*T); c.transform(e.J[0]*T,e.J[2]*T,e.J[1]*T,e.J[3]*T,0,0);
+      const D=(x,y,r,col)=>{ c.fillStyle=col; c.beginPath(); c.arc(x,y,r,0,Math.PI*2); c.fill(); };
+      D(0,0,.202,'rgba(40,55,25,.3)'); D(0,0,.19,'#FBF8F0');           // cream eye with a soft rim
+      D(0,-.01,.128,'#121115');                                         // big black pupil
+      D(.05,.05,.032,'#FFFFFF'); D(-.04,-.055,.013,'rgba(255,255,255,.75)');
+      c.restore();
+    }
+    E(.478,.505,.0065,.0075,'#141317'); E(.522,.505,.0065,.0075,'#141317');   // nostrils
+    arc(.5,.47,.1,.26*Math.PI,.74*Math.PI,.0075,'#141317');
   }
   else if(key==='chick'){ eye(.415,.45,.022); eye(.585,.45,.022); blush(.36,.52); blush(.64,.52); }
   else if(key==='kitty'){
@@ -1547,7 +1580,7 @@ function drawPresetThumb(c,key){
   if(key==='panda'){ ear(.24,'#2A2A2E'); ear(.76,'#2A2A2E'); }
   if(key==='bear'){ ear(.24,'#8A5C37'); ear(.76,'#8A5C37'); }
   if(key==='piggy'){ ear(.28,'#F391A8',1); ear(.72,'#F391A8',1); }
-  if(key==='frog'){ dot(.32,.2,.11,P.base); dot(.68,.2,.11,P.base); }
+  if(key==='frog'){ dot(.31,.24,.13,P.base); dot(.69,.24,.13,P.base); }
   if(key==='puppy'){ c.fillStyle='#B98450'; c.beginPath(); c.ellipse(.15*S,.48*S,.09*S,.17*S,.25,0,Math.PI*2); c.ellipse(.85*S,.48*S,.09*S,.17*S,-.25,0,Math.PI*2); c.fill(); }
   shadeBall(c,S,P.base);
   if(key==='kitty'){ c.save(); c.beginPath(); c.arc(S/2,S/2+S*.04,S*.4,0,Math.PI*2); c.clip(); c.fillStyle='#A7A5AB'; c.beginPath(); c.ellipse(S/2,S*.12,S*.42,S*.16,0,0,Math.PI*2); c.fill(); c.restore(); }
@@ -1560,7 +1593,7 @@ function drawPresetThumb(c,key){
   const k=S*1.55; c.translate(S/2-.5*k,S*.54-.5*k);
   if(key==='frog'){ c.restore(); c.save(); c.translate(S/2-.5*k,S*.54-.5*k); }
   paintPresetFace(c,key,k); c.restore();
-  if(key==='frog'){ for(const x of [.32,.68]){ dot(x,.2,.065,'#fff'); dot(x,.21,.035,'#17151A'); } }
+  if(key==='frog'){ for(const x of [.31,.69]){ dot(x,.25,.085,'#F4F1E8'); dot(x,.255,.055,'#141317'); dot(x+.02,.235,.014,'#fff'); } }
 }
 function faceCrop(src,L,size){
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const q of L){ x0=Math.min(x0,q[0]); y0=Math.min(y0,q[1]); x1=Math.max(x1,q[0]); y1=Math.max(y1,q[1]); }
@@ -1613,6 +1646,8 @@ function setPreset(key){
   const me=key==='me';
   $('swatches').hidden=!me; $('styleGroup').hidden=!me; $('exprGroup').hidden=!me||!state.srcMarks;
   if(!state.hairTouched) setHair(me?M().hair:'none');
+  const pm=!me&&PRESETS[key].mat;                                     // some presets come with their own material
+  if(pm && state.mat!==pm){ state.mat=pm; state.color=0; pressed('matSeg','mat',pm); buildSwatches(); }
   applyMaterial(); buildFace(); wobble(.05);
   renderPresetRow();
 }
