@@ -1,0 +1,1623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A 3D stress ball that wears your face. Squish, pinch, pick it up and drop it.">
+<title>Squish Face</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Caveat:wght@600&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+/* Layout: the ball owns the whole screen. Title top-left, two round tools top-right,
+   one floating dock at the bottom whose tabs open a small card of choices. */
+:root{
+  --bg:#F3F0EB; --fg:#1E1B18; --muted:#7A726B; --card:#FFFFFF; --line:rgba(30,27,24,.09);
+  --accent:#FF6326; --accent-fg:#FFFFFF; --accent-soft:#FDE7DC; --shadow:0 12px 32px -14px rgba(60,40,25,.28);
+  --display:"Bagel Fat One","Arial Rounded MT Bold",system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --hand:"Caveat","Segoe Print","Bradley Hand",cursive;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#1B1917; --fg:#F2EDE7; --muted:#A39A91; --card:#282420; --line:rgba(255,255,255,.08);
+  --accent:#FF7E45; --accent-fg:#1B0D05; --accent-soft:#3D2A20; --shadow:0 12px 32px -14px rgba(0,0,0,.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#1B1917; --fg:#F2EDE7; --muted:#A39A91; --card:#282420; --line:rgba(255,255,255,.08);
+  --accent:#FF7E45; --accent-fg:#1B0D05; --accent-soft:#3D2A20; --shadow:0 12px 32px -14px rgba(0,0,0,.6); color-scheme:dark}
+
+[hidden]{display:none!important}
+html{height:100%;box-sizing:border-box}
+*,*::before,*::after{box-sizing:inherit}
+body{height:100%;background:var(--bg);color:var(--fg);font-family:var(--body);overflow:hidden}
+.app{position:relative;height:100%;overflow:hidden}
+.stage{position:absolute;inset:0;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.stage.grabbing{cursor:grabbing}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.err{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}
+
+header{position:absolute;top:24px;left:max(24px,env(safe-area-inset-left,0px));pointer-events:none;z-index:2}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,4.4vw,44px);line-height:1;margin:0}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);font-size:16px;line-height:1.45;margin:14px 0 0;max-width:15em}
+
+.tools{position:absolute;top:24px;right:max(24px,env(safe-area-inset-right,0px));display:flex;gap:10px;z-index:3}
+.icon-btn{width:48px;height:48px;border-radius:50%;border:0;background:var(--card);color:var(--fg);box-shadow:var(--shadow);display:grid;place-items:center;cursor:pointer;padding:0}
+.icon-btn:hover{color:var(--accent)}
+#sound[aria-pressed="true"]{color:var(--muted)}
+#squeeze{touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .12s,background .12s}
+#squeeze.on{transform:scale(.88,.8);background:var(--accent);color:var(--accent-fg)}
+
+.note{position:absolute;left:calc(50% - min(34vw,330px));top:30%;z-index:1;pointer-events:none;color:var(--fg);
+  font:600 34px/1 var(--hand);transform:rotate(-12deg);display:flex;flex-direction:column;align-items:center;gap:2px;opacity:.9}
+.note svg{margin-left:50px}
+.status{position:absolute;top:24px;left:50%;transform:translateX(-50%);z-index:3;background:var(--card);box-shadow:var(--shadow);border-radius:999px;padding:9px 16px;font-size:14px;font-weight:600;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+
+/* dock + card */
+.dock{position:absolute;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:4;
+  display:flex;gap:4px;padding:8px;background:var(--card);border-radius:30px;box-shadow:var(--shadow)}
+.tab{width:112px;border:0;background:none;color:var(--muted);border-radius:22px;padding:10px 0 8px;display:flex;flex-direction:column;align-items:center;gap:6px;font:500 15px/1 var(--body);cursor:pointer}
+.tab svg{color:var(--fg)}
+.tab[aria-selected="true"]{background:var(--accent-soft);color:var(--fg);font-weight:600}
+.pop{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(22px + env(safe-area-inset-bottom,0px) + 96px);z-index:4;
+  width:max-content;max-width:calc(100% - 32px);background:var(--card);border-radius:22px;box-shadow:var(--shadow);padding:16px 18px}
+.pop::after{content:"";position:absolute;bottom:-7px;left:var(--caret,50%);width:14px;height:14px;background:var(--card);transform:translateX(-50%) rotate(45deg);border-radius:2px}
+.panel{display:flex;flex-direction:column;gap:14px;align-items:center}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center}
+.label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.sect{display:flex;flex-direction:column;gap:8px;align-items:center}
+
+.btn{font:600 14px/1 var(--body);color:var(--fg);background:transparent;border:1.5px solid var(--line);border-radius:999px;padding:11px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.btn.accent{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.seg{display:inline-flex;flex-wrap:wrap;justify-content:center;gap:4px}
+.seg button{font:600 14px/1 var(--body);color:var(--muted);background:none;border:1.5px solid var(--line);border-radius:999px;padding:9px 13px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+
+.mats{display:flex;gap:6px}
+.mat{border:0;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;font:500 14px/1 var(--body);color:var(--fg);padding:6px 8px;border-radius:16px}
+.mat .sphere{width:52px;height:52px;border-radius:50%;display:block;outline:2px solid transparent;outline-offset:3px}
+.mat[aria-pressed="true"] .sphere{outline-color:var(--accent)}
+.sphere.squishy{background:radial-gradient(circle at 34% 28%,#fff 0 7%,#FFC2A6 20%,#F08A62 62%,#C9603D 100%)}
+.sphere.foam{background:radial-gradient(circle at 38% 32%,#9CC3EE 0,#6D9FDB 45%,#4776B5 100%)}
+.sphere.plastic{background:radial-gradient(circle at 33% 27%,#fff 0 9%,#FFE07A 16%,#F2B825 58%,#BE860A 100%)}
+.sphere.clay{background:radial-gradient(circle at 40% 34%,#B9C9A6 0,#93A882 50%,#6E8160 100%)}
+
+.sw{width:28px;height:28px;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 1.5px var(--line);cursor:pointer;padding:0}
+.sw.small{width:24px;height:24px}
+.sw[aria-checked="true"]{box-shadow:0 0 0 2.5px var(--fg)}
+.thumbs{display:grid;grid-template-columns:repeat(9,52px);gap:8px;justify-content:center}
+.thumb{width:52px;height:52px;border-radius:50%;padding:0;border:0;background:none;cursor:pointer;outline:2px solid transparent;outline-offset:2px}
+.thumb canvas{width:100%;height:100%;display:block;border-radius:50%}
+.thumb[aria-checked="true"]{outline-color:var(--accent)}
+.thumbs.expr{grid-template-columns:repeat(7,52px)}
+.btn:focus-visible,.sw:focus-visible,.seg button:focus-visible,.tab:focus-visible,.icon-btn:focus-visible,.mat:focus-visible,.thumb:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:640px){
+  header{top:20px;left:max(20px,env(safe-area-inset-left,0px))}
+  .sub{font-size:13px;margin-top:10px;max-width:13em}
+  .tools{top:20px;right:max(20px,env(safe-area-inset-right,0px));gap:8px}
+  .icon-btn{width:42px;height:42px}
+  .note{left:auto;right:28px;top:27%;font-size:26px}
+  .note svg{margin-left:0;transform:scaleX(-1) rotate(30deg)}
+  .dock{bottom:calc(14px + env(safe-area-inset-bottom,0px));padding:6px;width:calc(100% - 32px);justify-content:space-between}
+  .tab{width:auto;flex:1;font-size:12px}
+  .pop{bottom:calc(14px + env(safe-area-inset-bottom,0px) + 82px);padding:14px 12px}
+  .thumbs{grid-template-columns:repeat(5,48px)} .thumbs.expr{grid-template-columns:repeat(4,48px)}
+  .thumb{width:48px;height:48px}
+  .mat .sphere{width:44px;height:44px}
+  .status{top:auto;bottom:calc(14px + env(safe-area-inset-bottom,0px) + 86px)}
+}
+
+/* crop sheet */
+.sheet{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:rgba(20,14,10,.5);padding:16px}
+.card{background:var(--card);color:var(--fg);border-radius:24px;padding:20px;width:min(360px,100%);display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)}
+.card h2{font-family:var(--display);font-weight:400;font-size:24px;margin:0}
+.card p{margin:0;color:var(--muted);font-size:14px;line-height:1.4}
+#crop{width:100%;max-width:324px;aspect-ratio:300/340;align-self:center;border-radius:16px;touch-action:none;cursor:move;background:#222}
+.zrow{display:flex;gap:10px;align-items:center}
+.zrow input[type=range]{flex:1;accent-color:var(--accent)}
+.actions{display:flex;gap:10px}
+.actions .btn{flex:1;justify-content:center}
+@media (prefers-reduced-motion:reduce){#squeeze{transition:none}}
+</style>
+
+</head>
+<body>
+<div class="app">
+  <div class="stage" id="stage">
+    <canvas id="gl" aria-label="3D squishy stress ball. Press or drag it to squish, pinch it, hold then lift to pick it up; drag the background to turn it."></canvas>
+  </div>
+
+  <header>
+    <h1>Squish <span>Face</span></h1>
+    <p class="sub">A 3D stress ball that wears your face. Go on, squeeze it.</p>
+  </header>
+
+  <div class="tools">
+    <button class="icon-btn" id="squeeze" aria-label="Hold to squeeze" title="Hold to squeeze">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 11.5V4a1.5 1.5 0 0 1 3 0v8"/><path d="M14 11.5V6a1.5 1.5 0 0 1 3 0v7.5"/><path d="M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-4.6-2.2L4.6 15.6a1.5 1.5 0 0 1 2.3-1.9L8 15"/></svg>
+    </button>
+    <button class="icon-btn" id="sound" aria-pressed="false"></button>
+    <button class="icon-btn" id="reset" aria-label="Reset the ball" title="Reset">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5"/></svg>
+    </button>
+  </div>
+
+  <div class="note" id="hint" aria-hidden="true">
+    <span>Squeeze it.</span>
+    <svg width="64" height="42" viewBox="0 0 64 42" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4c2 16 14 28 46 30"/><path d="M42 26l9 8-10 6"/></svg>
+  </div>
+  <div class="status" id="status" role="status" hidden></div>
+
+  <div class="pop" id="pop" hidden>
+    <div class="panel" data-panel="photo">
+      <div class="row">
+        <label class="btn primary" for="photo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Upload a photo</label>
+        <input class="vh" type="file" id="photo" accept="image/*">
+        <button class="btn" id="adjust" hidden>Adjust framing</button>
+      </div>
+      <div class="sect" id="styleGroup">
+        <span class="label">On the ball</span>
+        <div class="seg" id="styleSeg">
+          <button aria-pressed="true" data-style="features">Eyes &amp; mouth</button>
+          <button aria-pressed="false" data-style="photo">Whole photo</button>
+          <button aria-pressed="false" data-style="ink">Ink print</button>
+          <button aria-pressed="false" data-style="sculpt">Sculpted</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel" data-panel="material" hidden>
+      <div class="mats" id="matSeg">
+        <button class="mat" aria-pressed="true" data-mat="squishy"><span class="sphere squishy"></span>Squishy</button>
+        <button class="mat" aria-pressed="false" data-mat="foam"><span class="sphere foam"></span>Foam</button>
+        <button class="mat" aria-pressed="false" data-mat="plastic"><span class="sphere plastic"></span>Bouncy</button>
+        <button class="mat" aria-pressed="false" data-mat="clay"><span class="sphere clay"></span>Clay</button>
+      </div>
+      <div class="row" role="radiogroup" aria-label="Ball color" id="swatches"></div>
+    </div>
+    <div class="panel" data-panel="face" hidden>
+      <div class="thumbs" id="presetRow" role="radiogroup" aria-label="Face"></div>
+      <div class="sect" id="exprGroup" hidden>
+        <span class="label">Expression</span>
+        <div class="thumbs expr" id="exprRow" role="radiogroup" aria-label="Expression"></div>
+      </div>
+    </div>
+    <div class="panel" data-panel="hair" hidden>
+      <div class="seg" id="hairSeg">
+        <button aria-pressed="false" data-hair="none">None</button>
+        <button aria-pressed="true" data-hair="tuft">Tuft</button>
+        <button aria-pressed="false" data-hair="mohawk">Mohawk</button>
+        <button aria-pressed="false" data-hair="curls">Curls</button>
+        <button aria-pressed="false" data-hair="shaggy">Shaggy</button>
+      </div>
+      <div class="row" role="radiogroup" aria-label="Hair color" id="hairSwatches"></div>
+    </div>
+  </div>
+
+  <nav class="dock" aria-label="Customize">
+    <button class="tab" data-tab="photo" aria-selected="false">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Photo</button>
+    <button class="tab" data-tab="material" aria-selected="false">
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor"/><circle cx="12" cy="12" r="10.2" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".35"/></svg>Material</button>
+    <button class="tab" data-tab="face" aria-selected="false">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01" stroke-width="2.6"/></svg>Face</button>
+    <button class="tab" data-tab="hair" aria-selected="false">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21c0-6 1-11 6-15"/><path d="M12 21c0-5-2-9-7-12"/><path d="M12 21V8"/><path d="M17 3l1 2.5L20.5 6 18 7l-1 2.5L16 7l-2.5-1L16 5z"/></svg>Hair</button>
+  </nav>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="cropTitle">
+    <h2 id="cropTitle">Frame your face</h2>
+    <p>Drag to move, zoom to fit. Put your eyes on the dotted line.</p>
+    <canvas id="crop"></canvas>
+    <div class="zrow"><span class="label">Zoom</span><input type="range" id="zoom" min="0.3" max="4" step="0.01" value="1"></div>
+    <div class="actions">
+      <button class="btn" id="cancelCrop">Cancel</button>
+      <button class="btn accent" id="applyCrop">Put it on the ball</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const stage = $('stage'), cv = $('gl');
+if (!window.THREE) { stage.insertAdjacentHTML('beforeend','<div class="err">The 3D engine didn’t load. Check your connection and reload.</div>'); return; }
+
+/* ---------------- settings ---------------- */
+/* Materials: look + how the rubber moves.
+   k/damp = spring back speed, pull = how far it stretches, press = dent depth,
+   bounce = restitution on landing, impact = squash on landing, jig = wobble when moved */
+const MATS = {
+  squishy:{ palette:[{name:'Sky',base:'#45AEF2'},{name:'Bubblegum',base:'#FF7FB0'},{name:'Lime',base:'#8DD45E'},{name:'Tangerine',base:'#FF9A3D'},{name:'Lilac',base:'#A98CF6'},{name:'Cream',base:'#F1E9DA'}],
+    rough:.42, coat:.55, coatR:.28, env:1, bump:0, wr:.038, wrBase:0, k:.11, damp:.84, pull:.85, press:.2, bounce:.35, impact:1.2, jig:1, reb:.9, follow:.3, hair:'tuft', face:'features' },
+  foam:{ palette:[{name:'Charcoal',base:'#47474A'},{name:'Stone',base:'#9C9A94'},{name:'Sand',base:'#C9B38F'},{name:'Porcelain',base:'#ECE8E1'}],
+    rough:.9, coat:0, coatR:0, env:.45, bump:.006, wr:.03, wrBase:.08, k:.035, damp:.8, pull:.75, press:.26, bounce:.08, impact:.9, jig:.35, reb:.965, follow:.2, hair:'none', face:'sculpt' },
+  plastic:{ palette:[{name:'Cherry',base:'#E3312C'},{name:'Lemon',base:'#FFC814'},{name:'Cobalt',base:'#1F6FE5'},{name:'Tangerine',base:'#FF7A1A'},{name:'Snow',base:'#F2F2EF'},{name:'Jet',base:'#1C1C20'}],
+    rough:.13, coat:1, coatR:.05, env:1.25, bump:0, k:.34, damp:.86, pull:.16, press:.04, bounce:.8, impact:.4, jig:.12, reb:.72, follow:.5, hair:'none', face:'features', bouncy:true },
+  clay:{ palette:[{name:'Terracotta',base:'#C2694A'},{name:'Ochre',base:'#D6A243'},{name:'Sage',base:'#8FA382'},{name:'Plum',base:'#7D4C6C'},{name:'Grey clay',base:'#A9A49A'}],
+    rough:.96, coat:0, coatR:0, env:.35, bump:.012, k:.22, damp:.6, pull:1.1, press:.28, bounce:0, impact:1.1, jig:.5, reb:.8, follow:.28, hair:'none', face:'sculpt', clay:true }
+};
+const HAIR_COLORS=[{name:'Sunshine',base:'#D49B00'},{name:'Ink',base:'#1E1D22'},{name:'Cocoa',base:'#6B4226'},{name:'Ginger',base:'#D9622B'},{name:'Bubblegum',base:'#FF6FA8'},{name:'Mint',base:'#5FD3A6'}];
+const state = { mat:'squishy', color:0, style:'features', img:null, crop:null, marks:null, squishes:0, sound:true,
+  hair:'tuft', hairColor:0, hairTouched:false, preset:'me', expr:'none', src:null, srcMarks:null };
+const M = () => MATS[state.mat];
+const COLOR = () => M().palette[state.color];
+
+// Face oval, in face-texture coordinates (0..1, y down). The texture is projected from the front.
+const FACE = { cx:.5, cy:.55, rx:.26, ry:.30 };
+const EYE_LINE = .465;
+const PW = 2.4;               // projection width: u = .5 + x/PW, v = .5 + y/PW
+
+/* ---------------- renderer + scene ---------------- */
+let renderer;
+try { renderer = new THREE.WebGLRenderer({canvas:cv, antialias:true, alpha:true}); }
+catch(e){ stage.insertAdjacentHTML('beforeend','<div class="err">This browser can’t draw 3D (WebGL is off). Try a recent Chrome, Safari or Firefox.</div>'); return; }
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.VSMShadowMap;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(28, 1, .1, 100);
+
+// soft studio environment for reflections
+(() => {
+  const env = new THREE.Scene();
+  env.add(new THREE.Mesh(new THREE.SphereGeometry(10,32,16), new THREE.MeshBasicMaterial({color:0x58625d, side:THREE.BackSide})));
+  const panel = (w,h,x,y,z,k) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({color:new THREE.Color(1,1,1).multiplyScalar(k), side:THREE.DoubleSide}));
+    m.position.set(x,y,z); m.lookAt(0,0,0); env.add(m);
+  };
+  panel(7,4,-4,6,4,5); panel(4,6,6,2,1,2.2); panel(8,2,0,-1,-7,1.4); panel(10,10,0,9,0,1.2);
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromScene(env,.04).texture;
+})();
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x7d8f84, .45));
+const key = new THREE.DirectionalLight(0xffffff, 2.1);
+key.position.set(-2.6,5,3.6); key.castShadow = true;
+key.shadow.mapSize.set(512,512); key.shadow.radius = 18; key.shadow.blurSamples = 16;
+Object.assign(key.shadow.camera,{left:-2.4,right:2.4,top:2.4,bottom:-2.4,near:1,far:14});
+key.shadow.bias = -.002;
+scene.add(key); scene.add(key.target);
+const rim = new THREE.DirectionalLight(0xdfeeff, .7); rim.position.set(3,2,-3); scene.add(rim);
+
+const group = new THREE.Group(); scene.add(group);
+
+/* ---------------- ball geometry ---------------- */
+const WS = 176, HS = 132;
+const geo = new THREE.SphereGeometry(1, WS, HS, -Math.PI/2);   // seam faces away from the viewer
+const P = geo.attributes.position, NV = P.count;
+const base = new Float32Array(NV*3), baseN = new Float32Array(NV*3), rest = new Float32Array(NV*3), vel = new Float32Array(NV*3);
+const uvArr = geo.attributes.uv.array, front = new Float32Array(NV);
+let minY = 0, maxY = 0;
+for (let i=0;i<NV;i++){
+  // pack vertices toward the front so the sculpted face has enough geometry
+  { const ux=P.getX(i), uy=P.getY(i), uz=P.getZ(i);
+    const a=Math.atan2(ux,uz), t=Math.acos(Math.max(-1,Math.min(1,uy)));
+    const a2=Math.sign(a)*Math.PI*Math.pow(Math.abs(a)/Math.PI,1.45);
+    const dt=t-Math.PI/2, t2=Math.PI/2+Math.sign(dt)*(Math.PI/2)*Math.pow(Math.abs(dt)/(Math.PI/2),1.25);
+    P.setXYZ(i,Math.sin(t2)*Math.sin(a2),Math.cos(t2),Math.sin(t2)*Math.cos(a2)); }
+  let x=P.getX(i), y=P.getY(i)*1.12, z=P.getZ(i);
+  const s = 1 + .09*(-y/1.12);                 // a little wider toward the bottom, like a head
+  x*=s; z*=s*.93;
+  if (y < -.9) y = -.9 + (y+.9)*.25;           // flat bottom so it sits on the table
+  P.setXYZ(i,x,y,z);
+  base[i*3]=x; base[i*3+1]=y; base[i*3+2]=z;
+  uvArr[i*2] = .5 + x/PW; uvArr[i*2+1] = .5 + y/PW;
+  const t = Math.min(1,Math.max(0,(z-.08)/.42)); front[i] = t*t*(3-2*t);
+  minY = Math.min(minY,y); maxY = Math.max(maxY,y);
+}
+geo.setAttribute('aFront', new THREE.BufferAttribute(front,1));
+geo.attributes.uv.needsUpdate = true;
+function fixSeams(){
+  const n = geo.attributes.normal.array;
+  const avg = list => { let x=0,y=0,z=0; for(const i of list){x+=n[i*3];y+=n[i*3+1];z+=n[i*3+2];}
+    const l=Math.hypot(x,y,z)||1; for(const i of list){n[i*3]=x/l;n[i*3+1]=y/l;n[i*3+2]=z/l;} };
+  for (let r=0;r<=HS;r++){ const a=r*(WS+1); avg([a,a+WS]); }
+  const top=[],bot=[]; for(let c=0;c<=WS;c++){ top.push(c); bot.push(HS*(WS+1)+c); }
+  avg(top); avg(bot);
+}
+geo.computeVertexNormals(); fixSeams();
+baseN.set(geo.attributes.normal.array);
+rest.set(base);
+const pos = P.array;
+const midY = (minY+maxY)/2, halfH = (maxY-minY)/2;
+
+/* ---------------- face texture ---------------- */
+const TEX = 1024;
+const faceCv = document.createElement('canvas'); faceCv.width = faceCv.height = TEX;
+const faceTex = new THREE.CanvasTexture(faceCv);
+faceTex.encoding = THREE.sRGBEncoding;
+faceTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+
+const aoCol = new Float32Array(NV*3).fill(1);
+const comp = new Float32Array(NV);                       // how squeezed each bit of skin is (0..1)
+geo.setAttribute('aComp', new THREE.BufferAttribute(comp,1));
+const bumpU = { base:{value:1}, wr:{value:0} };
+geo.setAttribute('color', new THREE.BufferAttribute(aoCol,3));
+const mat = new THREE.MeshPhysicalMaterial({ map:faceTex, color:0xffffff, vertexColors:true });
+mat.onBeforeCompile = sh => {
+  sh.uniforms.uBumpBase=bumpU.base; sh.uniforms.uBumpWr=bumpU.wr;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>','#include <common>\nattribute float aFront;\nvarying float vFront;\nattribute float aComp;\nvarying float vComp;')
+    .replace('#include <uv_vertex>','#include <uv_vertex>\nvFront = aFront; vComp = aComp;');
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>','#include <common>\nvarying float vFront;\nvarying float vComp;\nuniform float uBumpBase;\nuniform float uBumpWr;')
+    // creases appear only where the skin is compressed: scale the bump per pixel
+    .replace('#include <bumpmap_pars_fragment>','#define dHdxy_fwd dHdxy_fwd_raw\n#include <bumpmap_pars_fragment>\n#undef dHdxy_fwd\n#define dHdxy_fwd() (dHdxy_fwd_raw()*(uBumpBase+uBumpWr*vComp))')
+    .replace('#include <map_fragment>',`#ifdef USE_MAP
+      vec4 texelColor = texture2D( map, vUv );
+      texelColor = mapTexelToLinear( texelColor );
+      diffuseColor.rgb = mix( diffuseColor.rgb, texelColor.rgb, texelColor.a * vFront );
+    #endif`);
+};
+const ball = new THREE.Mesh(geo, mat);
+ball.castShadow = true;
+group.add(ball);
+
+/* Shadows, two layers like a studio photo:
+   1. a contact shadow — the ball seen from below, blurred, darkest where it touches the table
+      and fading and spreading as it lifts;
+   2. a wide, very soft cast shadow from the key light, offset away from it. */
+const SHADOW_TINT = new THREE.Color('#3a2516');
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.ShadowMaterial({opacity:.13, color:SHADOW_TINT}));
+ground.rotation.x = -Math.PI/2; ground.position.y = minY - .002; ground.receiveShadow = true;
+scene.add(ground);
+
+const CS = { size:5, height:1.5, res:512 };
+const csGroup = new THREE.Group(); scene.add(csGroup);
+const csRT = new THREE.WebGLRenderTarget(CS.res,CS.res), csRT2 = new THREE.WebGLRenderTarget(CS.res,CS.res);
+csRT.texture.generateMipmaps = csRT2.texture.generateMipmaps = false;
+const csPlaneGeo = new THREE.PlaneGeometry(CS.size,CS.size).rotateX(Math.PI/2);
+const csPlane = new THREE.Mesh(csPlaneGeo, new THREE.MeshBasicMaterial({color:SHADOW_TINT, alphaMap:csRT.texture, transparent:true, depthWrite:false, opacity:.82}));
+csPlane.scale.y = -1; csPlane.renderOrder = 1; csGroup.add(csPlane);
+const csBlur = new THREE.Mesh(csPlaneGeo); csBlur.visible = false; csGroup.add(csBlur);
+const csCam = new THREE.OrthographicCamera(-CS.size/2,CS.size/2,CS.size/2,-CS.size/2,0,CS.height);
+csCam.rotation.x = Math.PI/2; csGroup.add(csCam);
+const csDepth = new THREE.MeshDepthMaterial({side:THREE.DoubleSide});
+csDepth.onBeforeCompile = sh => {
+  sh.fragmentShader = sh.fragmentShader.replace('gl_FragColor = vec4( vec3( 1.0 - fragCoordZ ), opacity );',
+    'float a = pow( clamp( 1.0 - fragCoordZ, 0.0, 1.0 ), 2.6 ); gl_FragColor = vec4( vec3( a ), a );');
+};
+csDepth.depthTest = false; csDepth.depthWrite = false;
+const blurMat = new THREE.ShaderMaterial({
+  uniforms:{ tDiffuse:{value:null}, dir:{value:new THREE.Vector2()} },
+  vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+  fragmentShader:`uniform sampler2D tDiffuse; uniform vec2 dir; varying vec2 vUv;
+    void main(){ vec4 s=texture2D(tDiffuse,vUv)*.1633;
+      s+=(texture2D(tDiffuse,vUv+dir)+texture2D(tDiffuse,vUv-dir))*.1531;
+      s+=(texture2D(tDiffuse,vUv+2.*dir)+texture2D(tDiffuse,vUv-2.*dir))*.12245;
+      s+=(texture2D(tDiffuse,vUv+3.*dir)+texture2D(tDiffuse,vUv-3.*dir))*.0918;
+      s+=(texture2D(tDiffuse,vUv+4.*dir)+texture2D(tDiffuse,vUv-4.*dir))*.051;
+      gl_FragColor=s; }`,
+  depthTest:false
+});
+csBlur.material = blurMat;
+function blurPass(amt){
+  csBlur.visible = true;
+  blurMat.uniforms.tDiffuse.value = csRT.texture; blurMat.uniforms.dir.value.set(amt/CS.res,0);
+  renderer.setRenderTarget(csRT2); renderer.render(csBlur,csCam);
+  blurMat.uniforms.tDiffuse.value = csRT2.texture; blurMat.uniforms.dir.value.set(0,amt/CS.res);
+  renderer.setRenderTarget(csRT); renderer.render(csBlur,csCam);
+  csBlur.visible = false;
+}
+function renderContactShadow(){
+  csGroup.position.set(body.x+.06, minY+.003, -.04);   // nudged away from the key light
+  ground.visible = csPlane.visible = false;
+  const ca = renderer.getClearAlpha(), tm = renderer.toneMapping;
+  renderer.setClearAlpha(0); renderer.toneMapping = THREE.NoToneMapping;
+  scene.overrideMaterial = csDepth;
+  renderer.setRenderTarget(csRT); renderer.clear(); renderer.render(scene,csCam);
+  scene.overrideMaterial = null;
+  const b = 2.2 + body.y*5;            // softer the higher it is
+  blurPass(b); blurPass(b*.45);
+  renderer.setRenderTarget(null); renderer.setClearAlpha(ca); renderer.toneMapping = tm;
+  ground.visible = csPlane.visible = true;
+}
+
+// fine surface grain for foam and clay (fingerprints, pores)
+const grainCv=document.createElement('canvas'); grainCv.width=grainCv.height=1024;
+{ const x=grainCv.getContext('2d'); x.fillStyle='#808080'; x.fillRect(0,0,1024,1024);
+  let seed=5; const r=()=>((seed=(seed*16807)%2147483647)/2147483647);
+  for(let i=0;i<26000;i++){ const v=r()<.5?255:0; x.fillStyle=`rgba(${v},${v},${v},${.05+r()*.08})`; x.beginPath(); x.arc(r()*1024,r()*1024,.8+r()*2.6,0,6.283); x.fill(); } }
+const grainTex=new THREE.CanvasTexture(grainCv);
+const crCv=document.createElement('canvas'); crCv.width=crCv.height=1024;
+{ // soft folds that run roughly parallel to their neighbours, like gathered foam skin
+  const S=512, w=document.createElement('canvas'); w.width=w.height=S; const x=w.getContext('2d');
+  x.fillStyle='#808080'; x.fillRect(0,0,S,S);
+  let seed=9; const r=()=>((seed=(seed*16807)%2147483647)/2147483647);
+  const flow=(px,py)=>1.3*Math.sin(px*.011+Math.cos(py*.007)*2)+Math.cos(py*.013-px*.004);
+  x.lineCap='round';
+  for(let i=0;i<900;i++){
+    const cx=r()*S, cy=r()*S, a=flow(cx,cy)+(r()-.5)*.35, L=14+r()*34, bend=(r()-.5)*L*.35, lw=2+r()*3.2;
+    const dx=Math.cos(a)*L/2, dy=Math.sin(a)*L/2, nx=-Math.sin(a), ny=Math.cos(a);
+    const path=o=>{ x.beginPath(); x.moveTo(cx-dx+nx*o,cy-dy+ny*o); x.quadraticCurveTo(cx+nx*(bend+o),cy+ny*(bend+o),cx+dx+nx*o,cy+dy+ny*o); x.stroke(); };
+    x.lineWidth=lw; x.strokeStyle=`rgba(0,0,0,${.16+r()*.16})`; path(0);
+    x.lineWidth=lw*.9; x.strokeStyle=`rgba(255,255,255,${.1+r()*.12})`; path(lw*.85);
+  }
+  const c=crCv.getContext('2d'); c.imageSmoothingQuality='high';
+  try{ c.filter='blur(2.5px)'; }catch(_){}
+  c.drawImage(w,0,0,1024,1024); c.filter='none';
+}
+const creaseTex=new THREE.CanvasTexture(crCv);
+
+function applyMaterial(){
+  const m=M();
+  if(state.preset==='me') mat.color.copy(new THREE.Color(COLOR().base).convertSRGBToLinear()); else mat.color.setRGB(1,1,1);
+  mat.roughness=m.rough; mat.clearcoat=m.coat; mat.clearcoatRoughness=m.coatR; mat.envMapIntensity=m.env; mat.metalness=0;
+  if(m.wr){ mat.bumpMap=creaseTex; mat.bumpScale=m.wr; bumpU.base.value=m.wrBase; bumpU.wr.value=1; }
+  else { mat.bumpMap=m.bump?grainTex:null; mat.bumpScale=m.bump; bumpU.base.value=1; bumpU.wr.value=0; }
+  mat.needsUpdate = true;
+}
+
+/* ---------------- face drawing ---------------- */
+function drawSmiley(x,T){
+  x.fillStyle='#12151d';
+  for (const ex of [.41,.59]){ x.beginPath(); x.ellipse(ex*T,.465*T,.026*T,.038*T,0,0,Math.PI*2); x.fill(); }
+  x.beginPath(); x.arc(.5*T,.51*T,.14*T,.18*Math.PI,.82*Math.PI);
+  x.arc(.5*T,.49*T,.175*T,.78*Math.PI,.22*Math.PI,true); x.closePath(); x.fill();
+}
+function photoInto(f,T){
+  const c=state.crop, img=state.img, rx=FACE.rx*T, ry=FACE.ry*T, k=(2*rx)/CROP.fw;
+  f.drawImage(img, FACE.cx*T-rx+(c.ox-CROP.fl)*k, FACE.cy*T-ry+(c.oy-CROP.ft)*k, img.naturalWidth*c.s*k, img.naturalHeight*c.s*k);
+}
+function drawFace(f,T){
+  photoInto(f,T);
+  const rx=FACE.rx*T, ry=FACE.ry*T, fx=FACE.cx*T, fy=FACE.cy*T;
+  if (state.style==='ink'){
+    const d=f.getImageData(0,0,T,T), p=d.data; let lo=255,hi=0;
+    for(let i=0;i<p.length;i+=16){ if(p[i+3]<200) continue; const l=.3*p[i]+.59*p[i+1]+.11*p[i+2]; if(l<lo)lo=l; if(l>hi)hi=l; }
+    const span=Math.max(30,hi-lo);
+    for(let i=0;i<p.length;i+=4){ if(!p[i+3]) continue;
+      const l=((.3*p[i]+.59*p[i+1]+.11*p[i+2])-lo)/span, a=Math.min(1,Math.max(0,(.72-l)*2.4));
+      p[i]=16;p[i+1]=20;p[i+2]=32;p[i+3]=Math.round(a*p[i+3]); }
+    f.putImageData(d,0,0);
+  }
+  f.save(); f.globalCompositeOperation='destination-in';
+  f.translate(fx,fy); f.scale(1,ry/rx);
+  const m=f.createRadialGradient(0,0,rx*.72,0,0,rx);
+  m.addColorStop(0,'rgba(0,0,0,1)'); m.addColorStop(1,'rgba(0,0,0,0)');
+  f.fillStyle=m; f.fillRect(-T,-T,T*2,T*2); f.restore();
+}
+
+/* sculpted face → height field → real geometry */
+const HM = 512;
+const hmCv = document.createElement('canvas'); hmCv.width = hmCv.height = HM;
+function boxBlur(src,w,h,r){
+  const tmp=new Float32Array(w*h), out=new Float32Array(w*h), n=2*r+1;
+  for(let y=0;y<h;y++){ let s=0; for(let x=-r;x<=r;x++) s+=src[y*w+Math.min(w-1,Math.max(0,x))];
+    for(let x=0;x<w;x++){ tmp[y*w+x]=s/n; s+=src[y*w+Math.min(w-1,x+r+1)]-src[y*w+Math.max(0,x-r)]; } }
+  for(let x=0;x<w;x++){ let s=0; for(let y=-r;y<=r;y++) s+=tmp[Math.min(h-1,Math.max(0,y))*w+x];
+    for(let y=0;y<h;y++){ out[y*w+x]=s/n; s+=tmp[Math.min(h-1,y+r+1)*w+x]-tmp[Math.max(0,y-r)*w+x]; } }
+  return out;
+}
+// A neutral face in face-texture units, used when there is no photo (or no landmarks)
+function templateL(){
+  const L=[];
+  for(let i=0;i<17;i++){ const t=Math.PI*i/16; L.push([.5-.21*Math.cos(t),.5+.29*Math.sin(t)]); }
+  for(let j=0;j<5;j++) L.push([.34+j*.031,.43-.014*Math.sin(Math.PI*j/4)]);
+  for(let j=0;j<5;j++) L.push([.536+j*.031,.43-.014*Math.sin(Math.PI*(4-j)/4)]);
+  [.465,.5,.535,.57].forEach(y=>L.push([.5,y]));
+  [[.465,.585],[.482,.59],[.5,.595],[.518,.59],[.535,.585]].forEach(q=>L.push(q));
+  for(const cx of [.41,.59]){ const w=.0425; L.push([cx-w,.47],[cx-.014,.461],[cx+.014,.461],[cx+w,.47],[cx+.014,.477],[cx-.014,.477]); }
+  [[.44,.66],[.46,.648],[.48,.641],[.5,.645],[.52,.641],[.54,.648],[.56,.66],[.54,.673],[.52,.681],[.5,.683],[.48,.681],[.46,.673],
+   [.448,.66],[.48,.656],[.5,.657],[.52,.656],[.552,.66],[.52,.663],[.5,.664],[.48,.663]].forEach(q=>L.push(q));
+  return L;
+}
+// the 68 face points, placed where they land on the ball (same straightening as the cut-out features)
+function faceLandmarks(T){
+  const mk=state.marks;
+  if(!(state.img&&mk&&mk.L)) return templateL().map(q=>[q[0]*T,q[1]*T]);
+  const c=state.crop, k=(2*FACE.rx*T)/CROP.fw, s=c.s*k;
+  const tx=FACE.cx*T-FACE.rx*T+(c.ox-CROP.fl)*k, ty=FACE.cy*T-FACE.ry*T+(c.oy-CROP.ft)*k;
+  const ca=Math.cos(-mk.ang), sa=Math.sin(-mk.ang), m=mk.mid;
+  return mk.L.map(q=>{ const dx=q[0]-m[0], dy=q[1]-m[1]; return [(m[0]+dx*ca-dy*sa)*s+tx,(m[1]+dx*sa+dy*ca)*s+ty]; });
+}
+// Build the face as real anatomy: brow ridge, eye sockets and lids, nose, cheeks, lips, mouth, chin.
+function heightField(){
+  const T=HM, h=new Float32Array(T*T), L=faceLandmarks(T);
+  const dist=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]), mid=(p,q)=>[(p[0]+q[0])/2,(p[1]+q[1])/2];
+  const avg=(a,b)=>{ let x=0,y=0; for(let i=a;i<=b;i++){x+=L[i][0];y+=L[i][1];} return [x/(b-a+1),y/(b-a+1)]; };
+  const eL=avg(36,41), eR=avg(42,47), eyeW=(dist(L[36],L[39])+dist(L[42],L[45]))/2, mW=dist(L[48],L[54]);
+  const blob=(c,rx,ry,amp)=>{
+    const x0=Math.max(0,(c[0]-rx*1.8)|0), x1=Math.min(T-1,(c[0]+rx*1.8)|0), y0=Math.max(0,(c[1]-ry*1.8)|0), y1=Math.min(T-1,(c[1]+ry*1.8)|0);
+    for(let y=y0;y<=y1;y++){ const v=(y-c[1])/ry; for(let x=x0;x<=x1;x++){ const u=(x-c[0])/rx; h[y*T+x]+=amp*Math.exp(-2*(u*u+v*v)); } }
+  };
+  const ridge=(p,q,w0,w1,a0,a1)=>{
+    const w=Math.max(w0,w1)*1.8, x0=Math.max(0,(Math.min(p[0],q[0])-w)|0), x1=Math.min(T-1,(Math.max(p[0],q[0])+w)|0);
+    const y0=Math.max(0,(Math.min(p[1],q[1])-w)|0), y1=Math.min(T-1,(Math.max(p[1],q[1])+w)|0);
+    const dx=q[0]-p[0], dy=q[1]-p[1], l2=dx*dx+dy*dy||1;
+    for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+      const t=Math.max(0,Math.min(1,((x-p[0])*dx+(y-p[1])*dy)/l2)), ex=x-(p[0]+dx*t), ey=y-(p[1]+dy*t);
+      const ww=w0+(w1-w0)*t, d2=(ex*ex+ey*ey)/(ww*ww);
+      h[y*T+x]+=(a0+(a1-a0)*t)*Math.exp(-2*d2);
+    }
+  };
+  const down=[0,1];
+  // brow ridge and forehead
+  for(let i=17;i<21;i++) ridge(L[i],L[i+1],eyeW*.42,eyeW*.42,.32,.32);
+  for(let i=22;i<26;i++) ridge(L[i],L[i+1],eyeW*.42,eyeW*.42,.32,.32);
+  blob(L[27],eyeW*.55,eyeW*.45,.18);
+  // eye sockets, eyeballs under the lids, lid creases
+  for(const [e,a,b2] of [[eL,36,39],[eR,42,45]]){
+    blob([e[0],e[1]-eyeW*.08],eyeW*1.05,eyeW*.78,-.32);
+    blob(e,eyeW*.6,eyeW*.36,.3);
+    ridge(L[a],L[a+1],eyeW*.07,eyeW*.07,-.16,-.16); ridge(L[a+1],L[a+2],eyeW*.07,eyeW*.07,-.16,-.16); ridge(L[a+2],L[b2],eyeW*.07,eyeW*.07,-.16,-.16);
+  }
+  // nose: bridge → tip, wings, nostrils
+  ridge(L[27],L[30],eyeW*.22,eyeW*.36,.3,.85);
+  blob(L[30],eyeW*.42,eyeW*.36,.42);
+  blob(L[31],eyeW*.3,eyeW*.26,.36); blob(L[35],eyeW*.3,eyeW*.26,.36);
+  blob([ (L[31][0]+L[33][0])/2, L[32][1]+eyeW*.06],eyeW*.12,eyeW*.08,-.34);
+  blob([ (L[33][0]+L[35][0])/2, L[34][1]+eyeW*.06],eyeW*.12,eyeW*.08,-.34);
+  // cheekbones and the folds beside the mouth
+  blob([eL[0]-eyeW*.15,eL[1]+eyeW*1.35],eyeW*1.25,eyeW*.95,.3);
+  blob([eR[0]+eyeW*.15,eR[1]+eyeW*1.35],eyeW*1.25,eyeW*.95,.3);
+  ridge(L[31],[L[48][0]-eyeW*.25,L[48][1]+eyeW*.15],eyeW*.18,eyeW*.18,-.1,-.06);
+  ridge(L[35],[L[54][0]+eyeW*.25,L[54][1]+eyeW*.15],eyeW*.18,eyeW*.18,-.1,-.06);
+  // philtrum, mouth corners, chin
+  blob(mid(L[33],L[51]),mW*.12,mW*.12,-.08);
+  blob(L[48],mW*.09,mW*.09,-.15); blob(L[54],mW*.09,mW*.09,-.15);
+  const chin=[L[8][0],L[8][1]-(L[8][1]-L[57][1])*.45];
+  blob(chin,mW*.55,mW*.34,.32);
+  blob(mid(L[57],chin),mW*.4,mW*.12,-.14);
+
+  // lips and mouth opening from the actual lip outlines
+  const mc=hmCv.getContext('2d'); mc.setTransform(1,0,0,1,0,0); mc.clearRect(0,0,T,T);
+  const poly=(idx,col)=>{ mc.fillStyle=col; mc.beginPath(); idx.forEach((i,n)=>n?mc.lineTo(L[i][0],L[i][1]):mc.moveTo(L[i][0],L[i][1])); mc.closePath(); mc.fill(); };
+  mc.globalCompositeOperation='lighter';
+  poly([48,49,50,51,52,53,54,64,63,62,61,60],'rgb(255,0,0)');
+  poly([54,55,56,57,58,59,48,60,67,66,65,64],'rgb(255,0,0)');
+  poly([60,61,62,63,64,65,66,67],'rgb(0,255,0)');
+  [[36,37,38,39,40,41],[42,43,44,45,46,47]].forEach(ix=>poly(ix,'rgb(0,0,255)'));
+  const md=mc.getImageData(0,0,T,T).data, lip=new Float32Array(T*T), hole=new Float32Array(T*T), eyeO=new Float32Array(T*T);
+  for(let i=0;i<T*T;i++){ lip[i]=md[i*4]/255; hole[i]=md[i*4+1]/255; eyeO[i]=md[i*4+2]/255; }
+  const lr=Math.max(2,Math.round(mW*.05));
+  const lipB=boxBlur(boxBlur(lip,T,T,lr),T,T,lr), holeB=boxBlur(boxBlur(hole,T,T,lr),T,T,lr), eyeB=boxBlur(eyeO,T,T,Math.max(1,lr>>1));
+  for(let i=0;i<T*T;i++) h[i]+=lipB[i]*.48-holeB[i]*.6-eyeB[i]*.1;
+
+  // a little real skin texture from the photo (high-pass, so lighting in the photo doesn't become shape)
+  if(state.img){
+    const f=hmCv.getContext('2d'); f.globalCompositeOperation='source-over'; f.fillStyle='#808080'; f.fillRect(0,0,T,T); photoInto(f,T);
+    const p=f.getImageData(0,0,T,T).data, lum=new Float32Array(T*T);
+    for(let i=0;i<T*T;i++) lum[i]=(.3*p[i*4]+.59*p[i*4+1]+.11*p[i*4+2])/255;
+    const low=boxBlur(boxBlur(lum,T,T,10),T,T,10), fine=boxBlur(lum,T,T,1);
+    for(let i=0;i<T*T;i++) h[i]+=(fine[i]-low[i])*.35;
+  }
+  // fade out at the edge of the face oval and smooth
+  for(let y=0;y<T;y++) for(let x=0;x<T;x++){
+    const nx=(x/T-FACE.cx)/(FACE.rx*1.1), ny=(y/T-FACE.cy)/(FACE.ry*1.08), rr=Math.sqrt(nx*nx+ny*ny);
+    h[y*T+x]*=Math.min(1,Math.max(0,(1-rr)/.22));
+  }
+  const hs=boxBlur(h,T,T,2);
+  // ambient occlusion: how far below its surroundings each spot sits
+  const wide=boxBlur(boxBlur(hs,T,T,14),T,T,14), ao=new Float32Array(T*T);
+  for(let i=0;i<T*T;i++) ao[i]=1-Math.min(.42,Math.max(0,(wide[i]-hs[i])*1.6)+holeB[i]*.3);
+  return {h:hs, ao};
+}
+function sampleH(h,u,v){
+  const x=Math.min(HM-2,Math.max(0,u*HM)), y=Math.min(HM-2,Math.max(0,(1-v)*HM));
+  const i=x|0,j=y|0,fx=x-i,fy=y-j,a=j*HM+i;
+  return h[a]*(1-fx)*(1-fy)+h[a+1]*fx*(1-fy)+h[a+HM]*(1-fx)*fy+h[a+HM+1]*fx*fy;
+}
+
+/* Features: cut eyes + mouth out of the photo and set them into the ball's own skin */
+const tmpCv=document.createElement('canvas'), mCv=document.createElement('canvas');
+tmpCv.width=tmpCv.height=mCv.width=mCv.height=TEX;
+function drawFeatures(f,T){
+  const c=state.crop, img=state.img, rx=FACE.rx*T, k=(2*rx)/CROP.fw;
+  const s=c.s*k, tx=FACE.cx*T-rx+(c.ox-CROP.fl)*k, ty=FACE.cy*T-FACE.ry*T+(c.oy-CROP.ft)*k;
+  const t=tmpCv.getContext('2d'), m=mCv.getContext('2d');
+  // straighten a tilted head: rotate every feature about the eye midpoint
+  const ang=state.marks.ang||0, mid=state.marks.mid, ca=Math.cos(-ang), sa=Math.sin(-ang);
+  const lev=q=>{ const dx=q[0]-mid[0], dy=q[1]-mid[1]; return [mid[0]+dx*ca-dy*sa, mid[1]+dx*sa+dy*ca]; };
+  for(const ft of state.marks.feats){
+    const cl=lev(ft.c), C=[cl[0]*s+tx, cl[1]*s+ty], b=ft.boost;
+    t.setTransform(1,0,0,1,0,0); t.globalCompositeOperation='source-over'; t.clearRect(0,0,T,T);
+    t.translate(C[0],C[1]); t.scale(b*s,b*s); t.rotate(-ang); t.translate(-ft.c[0],-ft.c[1]); t.drawImage(img,0,0);
+    // feathered oval mask (blurred shadow of an off-canvas shape)
+    m.setTransform(1,0,0,1,0,0); m.clearRect(0,0,T,T);
+    const R0=ft.rx*s*b, R1=ft.ry*s*b, fe=Math.min(R0,R1)*.38;
+    m.shadowColor='#000'; m.shadowBlur=fe; m.shadowOffsetX=T*2; m.fillStyle='#000';
+    m.beginPath(); m.ellipse(C[0]-T*2,C[1],Math.max(1,R0-fe*.5),Math.max(1,R1-fe*.5),0,0,Math.PI*2); m.fill();
+    m.shadowColor='transparent'; m.shadowOffsetX=0;
+    t.setTransform(1,0,0,1,0,0); t.globalCompositeOperation='destination-in'; t.drawImage(mCv,0,0);
+    t.globalCompositeOperation='source-over';
+    f.drawImage(tmpCv,0,0);
+  }
+  // shift the photo's skin tone toward the ball colour, strongest at the soft edges
+  const d=f.getImageData(0,0,T,T), p=d.data;
+  let sr=0,sg=0,sb=0,n=0;
+  for(let i=0;i<p.length;i+=16){ const a=p[i+3]; if(a>50&&a<170){ sr+=p[i];sg+=p[i+1];sb+=p[i+2];n++; } }
+  if(!n) return;
+  const hex=COLOR().base, B=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+  const gain=[B[0]/Math.max(20,sr/n),B[1]/Math.max(20,sg/n),B[2]/Math.max(20,sb/n)];
+  for(let i=0;i<p.length;i+=4){
+    const a=p[i+3]; if(!a) continue;
+    const st=.3+.7*(1-a/255);
+    for(let q=0;q<3;q++){ const v=p[i+q]; p[i+q]=v*(1-st)+Math.min(255,v*gain[q])*st; }
+  }
+  f.putImageData(d,0,0);
+}
+
+function clearAO(){ aoCol.fill(1); geo.attributes.color.needsUpdate=true; }
+function buildFace(){
+  const f=faceCv.getContext('2d'); f.clearRect(0,0,TEX,TEX);
+  if(state.preset!=='me'){ applyPreset(f); faceTex.needsUpdate=true; awake=90; return; }
+  if (state.style==='features' && state.img && state.marks){
+    rest.set(base); clearAO(); drawFeatures(f,TEX);
+  } else if (state.style==='sculpt'){
+    const {h,ao}=heightField(), depth=.2;
+    for(let i=0;i<NV;i++){
+      const u=uvArr[i*2], v=uvArr[i*2+1], d=sampleH(h,u,v)*front[i]*depth;
+      for(let a=0;a<3;a++) rest[i*3+a]=base[i*3+a]+baseN[i*3+a]*d;
+      const o=1-(1-sampleH(ao,u,v))*front[i];
+      aoCol[i*3]=aoCol[i*3+1]=aoCol[i*3+2]=o;
+    }
+    geo.attributes.color.needsUpdate=true;
+  } else {
+    rest.set(base); clearAO();
+    if (state.img) drawFace(f,TEX); else drawSmiley(f,TEX);
+  }
+  faceTex.needsUpdate = true;
+  awake = 90;
+}
+
+/* ---------------- hair (3D ribbons) ---------------- */
+let HAIR=[], SEG=6, hPos=null, hNor=null;
+const hairMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({vertexColors:true, roughness:.42, envMapIntensity:.6, side:THREE.DoubleSide}));
+hairMesh.castShadow = true; hairMesh.frustumCulled = false;
+group.add(hairMesh);
+
+function buildHair(){
+  const st=state.hair; HAIR=[];
+  hairMesh.visible = st!=='none';
+  if(st==='none') return;
+  let seed=11; const r=()=>((seed=(seed*16807)%2147483647)/2147483647);
+  const pick=fn=>{ const c=[]; for(let i=0;i<NV;i++) if(fn(base[i*3],base[i*3+1],base[i*3+2],baseN[i*3+1])) c.push(i); return c; };
+  const faceZone=(x,y,z)=>z>.45&&y<.5;       // keep the face clear
+  let cand,count,make;
+  if(st==='tuft'){ SEG=6; count=700; cand=pick((x,y,z,ny)=>ny>.74);
+    make=()=>({len:.22+r()*.26,w:.0075+r()*.003,tilt:[(r()-.5)*1.5,(r()-.35)*.35,(r()-.5)*1.5],droop:.2,k:.09}); }
+  else if(st==='mohawk'){ SEG=5; count=650; cand=pick((x,y,z,ny)=>Math.abs(x)<.12&&y>.25);
+    make=()=>({len:.26+r()*.22,w:.009+r()*.003,tilt:[(r()-.5)*.18,.25,(r()-.5)*.3],droop:.02,k:.15}); }
+  else if(st==='curls'){ SEG=14; count=600; cand=pick((x,y,z,ny)=>ny>.38&&!faceZone(x,y,z));
+    make=()=>({len:.18+r()*.12,w:.008+r()*.003,tilt:[(r()-.5)*.6,.1,(r()-.5)*.6],droop:.05,k:.1,curl:{amp:.04+r()*.025,f:15+r()*8,ph:r()*6.28}}); }
+  else { SEG=9; count=700; cand=pick((x,y,z,ny)=>ny>.28&&!faceZone(x,y,z));
+    make=()=>{ const a=r()*6.283; return {len:.6+r()*.4,w:.008+r()*.003,tilt:[0,0,0],droop:0,k:.05,hang:true,out:[Math.cos(a),0,Math.sin(a)]}; }; }
+  const baseC=new THREE.Color(HAIR_COLORS[state.hairColor].base);
+  for(let k=0;k<count;k++){
+    const h=make(); h.vi=cand[(r()*cand.length)|0]; h.tip=null; h.tv=[0,0,0];
+    h.col=baseC.clone().offsetHSL((r()-.5)*.015,.05,(r()-.55)*.16).convertSRGBToLinear();
+    HAIR.push(h);
+  }
+  const HV=count*(SEG+1)*2, col=new Float32Array(HV*3), idx=[];
+  hPos=new Float32Array(HV*3); hNor=new Float32Array(HV*3);
+  HAIR.forEach((h,k)=>{ for(let j=0;j<=SEG;j++){ const a=(k*(SEG+1)+j)*2;
+    for(const v of [a,a+1]){ col[v*3]=h.col.r; col[v*3+1]=h.col.g; col[v*3+2]=h.col.b; }
+    if(j<SEG) idx.push(a,a+1,a+2,a+1,a+3,a+2); } });
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(hPos,3));
+  g.setAttribute('normal',new THREE.BufferAttribute(hNor,3));
+  g.setAttribute('color',new THREE.BufferAttribute(col,3));
+  g.setIndex(idx);
+  hairMesh.geometry.dispose(); hairMesh.geometry=g;
+}
+
+const camLocal = new THREE.Vector3();
+function updateHair(acc){
+  if(!hairMesh.visible||!HAIR.length) return;
+  const N=geo.attributes.normal.array;
+  camLocal.copy(camera.position); group.worldToLocal(camLocal);
+  HAIR.forEach((s,k)=>{
+    const i=s.vi*3, r=[pos[i],pos[i+1],pos[i+2]];
+    let d=[N[i]+s.tilt[0],N[i+1]+s.tilt[1],N[i+2]+s.tilt[2]]; const dl=Math.hypot(...d)||1; d=d.map(v=>v/dl);
+    let target, cl;
+    if(s.hang){
+      let o=[r[0],0,r[2]]; const ol=Math.hypot(o[0],o[2]); o=ol>.15?[o[0]/ol,0,o[2]/ol]:s.out;
+      target=[r[0]+d[0]*s.len*.3+o[0]*s.len*.42, r[1]+d[1]*s.len*.3-s.len*.72, r[2]+d[2]*s.len*.3+o[2]*s.len*.42];
+      cl=.5;
+    } else {
+      target=[r[0]+d[0]*s.len, r[1]+d[1]*s.len-s.len*s.droop, r[2]+d[2]*s.len]; cl=.55;
+    }
+    if(!s.tip) s.tip=target.slice();
+    s.tv[0]-=acc[0]*.7; s.tv[1]-=acc[1]*.7; s.tv[2]-=acc[2]*.7;     // hair lags when the ball moves
+    for(let a=0;a<3;a++){ s.tv[a]=(s.tv[a]+(target[a]-s.tip[a])*s.k)*.86; s.tip[a]+=s.tv[a]; }
+    { const dx=s.tip[0]-r[0], dy=s.tip[1]-r[1], dz=s.tip[2]-r[2], dd=Math.hypot(dx,dy,dz), mx=s.len*1.25;
+      if(dd>mx){ const f=mx/dd; s.tip=[r[0]+dx*f,r[1]+dy*f,r[2]+dz*f]; s.tv=s.tv.map(v=>v*.5); } }
+    const c=[r[0]+d[0]*s.len*cl, r[1]+d[1]*s.len*cl, r[2]+d[2]*s.len*cl];
+    let e1=null,e2=null;
+    for(let j=0;j<=SEG;j++){
+      const t=j/SEG, m=1-t;
+      const p=[0,1,2].map(a=>m*m*r[a]+2*m*t*c[a]+t*t*s.tip[a]);
+      let tg=[0,1,2].map(a=>2*m*(c[a]-r[a])+2*t*(s.tip[a]-c[a]));
+      if(s.curl){
+        const tl=Math.hypot(...tg)||1, tn=tg.map(v=>v/tl);
+        e1=[tn[1]*0-tn[2]*1, tn[2]*0-tn[0]*0, tn[0]*1-tn[1]*0]; const l1=Math.hypot(...e1)||1; e1=e1.map(v=>v/l1);
+        e2=[tn[1]*e1[2]-tn[2]*e1[1], tn[2]*e1[0]-tn[0]*e1[2], tn[0]*e1[1]-tn[1]*e1[0]];
+        const ph=s.curl.ph+t*s.curl.f, am=s.curl.amp*Math.min(1,t*4), cs=Math.cos(ph), sn=Math.sin(ph);
+        for(let a=0;a<3;a++){ p[a]+=(e1[a]*cs+e2[a]*sn)*am; tg[a]+=(-e1[a]*sn+e2[a]*cs)*am*s.curl.f; }
+      }
+      const vw=[camLocal.x-p[0],camLocal.y-p[1],camLocal.z-p[2]];
+      let sd=[tg[1]*vw[2]-tg[2]*vw[1], tg[2]*vw[0]-tg[0]*vw[2], tg[0]*vw[1]-tg[1]*vw[0]];
+      const sl=Math.hypot(...sd)||1, w=s.w*(1-.3*t)/2; sd=sd.map(v=>v/sl*w);
+      const a=(k*(SEG+1)+j)*2;
+      for(let q=0;q<3;q++){
+        hPos[a*3+q]=p[q]-sd[q]; hPos[(a+1)*3+q]=p[q]+sd[q];
+        hNor[a*3+q]=hNor[(a+1)*3+q]=d[q];
+      }
+    }
+  });
+  hairMesh.geometry.attributes.position.needsUpdate=true; hairMesh.geometry.attributes.normal.needsUpdate=true;
+}
+
+/* ---------------- interaction ---------------- */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+const pointers = new Map();
+let g=0, gv=0, squeezing=false, rotY=0, rotV=0, spin=null, awake=60, clayBakeIn=0;
+const SIG2 = 2*.42*.42, tmpV = new THREE.Vector3(), Y_AXIS=new THREE.Vector3(0,1,0);
+// the whole ball as a body you can lift, throw and drop
+const body = { x:0, y:0, vx:0, vy:0, held:null, tx:0, ty:0, pvx:0, pvy:0 };
+let xLim=1.5, yLim=1.2;
+
+function setNDC(e){ const r=cv.getBoundingClientRect(); ndc.set((e.clientX-r.left)/r.width*2-1, -((e.clientY-r.top)/r.height)*2+1); }
+stage.addEventListener('pointerdown', e=>{
+  if(!$('sheet').hidden || e.target.closest('button')) return;
+  setNDC(e); audioWake(); $('hint').hidden=true;
+  try{ stage.setPointerCapture(e.pointerId); }catch(_){}
+  geo.computeBoundingSphere();
+  ray.setFromCamera(ndc,camera);
+  const hit = ray.intersectObject(ball)[0];
+  if(!hit){ spin={id:e.pointerId,x:e.clientX,t:performance.now()}; rotV=0; stage.classList.add('grabbing'); return; }
+  const camDir = camera.getWorldDirection(new THREE.Vector3()).negate();
+  const lp = ball.worldToLocal(hit.point.clone());
+  let vi=hit.face.a, bd=1e9;
+  for(const f of [hit.face.a,hit.face.b,hit.face.c]){ const d=(pos[f*3]-lp.x)**2+(pos[f*3+1]-lp.y)**2+(pos[f*3+2]-lp.z)**2; if(d<bd){bd=d;vi=f;} }
+  const rx=rest[vi*3], ry=rest[vi*3+1], rz=rest[vi*3+2], w=new Float32Array(NV);
+  for(let i=0;i<NV;i++){ const dx=rest[i*3]-rx, dy=rest[i*3+1]-ry, dz=rest[i*3+2]-rz; w[i]=Math.exp(-(dx*dx+dy*dy+dz*dz)/SIG2); }
+  // dent along the surface normal where you pressed (re-read from the current shape so clay dents follow its new form)
+  const n=geo.attributes.normal.array;
+  pointers.set(e.pointerId,{w, n:[n[vi*3],n[vi*3+1],n[vi*3+2]],
+    plane:new THREE.Plane().setFromNormalAndCoplanarPoint(camDir, hit.point),
+    start:hit.point.clone(), sx:e.clientX, sy:e.clientY, cx:e.clientX, cy:e.clientY, pull:[0,0,0], pullS:[0,0,0], press:0, moved:0,
+    gp:[rx,ry,rz], t0:performance.now(), force:realPressure(e)});
+  haptic(5);
+  if(pointers.size===2 && !pinch) startPinch();
+  stage.classList.add('grabbing'); awake=200;
+  // hold still for a moment and your hand grips the ball; then lift to pick it up.
+  // Holding still keeps pressing deeper; quick presses and drags only squish or shape.
+  const id=e.pointerId;
+  setTimeout(()=>{
+    const q=pointers.get(id);
+    if(!q || pointers.size!==1 || pinch || body.held || q.moved>10) return;
+    q.armed=true; q.ay=q.cy; haptic(6);
+  },450);
+});
+stage.addEventListener('pointermove', e=>{
+  if(spin && spin.id===e.pointerId){
+    const now=performance.now(), dx=e.clientX-spin.x;
+    rotY+=dx*.012; rotV=dx*.012/Math.max(1,(now-spin.t)/16.7); spin.x=e.clientX; spin.t=now; return;
+  }
+  if(body.held && body.held.id===e.pointerId){
+    setNDC(e); ray.setFromCamera(ndc,camera);
+    if(ray.ray.intersectPlane(body.held.plane,tmpV)){
+      body.tx=Math.max(-xLim,Math.min(xLim,tmpV.x-body.held.off[0]));
+      body.ty=Math.max(0,Math.min(yLim,tmpV.y-body.held.off[1]));
+    }
+    return;
+  }
+  const p=pointers.get(e.pointerId); if(!p) return;
+  p.cx=e.clientX; p.cy=e.clientY; p.force=realPressure(e);
+  if(pinch && pinch.ids.includes(e.pointerId)){
+    const [a,b]=pinch.ids.map(id=>pointers.get(id));
+    if(a&&b){ const d=Math.hypot(a.cx-b.cx,a.cy-b.cy); pinch.target=Math.max(-.35,Math.min(.6,(1-d/pinch.d0)*1.3)); }
+    p.moved=Math.max(p.moved,Math.hypot(e.clientX-p.sx,e.clientY-p.sy)); awake=200;
+    return;   // pinching fingers press in but don't drag the rubber
+  }
+  if(p.armed && pointers.size===1 && !pinch && p.ay-e.clientY>16){
+    pointers.delete(e.pointerId);
+    ghosts.push({w:p.w, n:p.n, gp:p.gp, pullS:p.pullS.slice(), press:p.press});   // the dent eases out as it leaves the table
+    body.held={id:e.pointerId, plane:p.plane, off:[p.start.x-body.x, p.start.y-body.y]};
+    body.tx=body.x; body.ty=Math.min(yLim,body.y+.25);
+    clayBakeIn=0; awake=200; squish(.25); haptic(12);
+    return;
+  }
+  setNDC(e); ray.setFromCamera(ndc,camera);
+  if(!ray.ray.intersectPlane(p.plane,tmpV)) return;
+  const dw=tmpV.clone().sub(p.start);
+  dw.applyAxisAngle(Y_AXIS,-rotY);   // into the ball's own frame
+  const d=dw.length(), Mx=M().pull, f=d>0?Mx*Math.tanh(d/Mx)/d:0;
+  p.pull=[dw.x*f,dw.y*f,dw.z*f];
+  p.moved=Math.max(p.moved,Math.hypot(e.clientX-p.sx,e.clientY-p.sy));
+  awake=200;
+});
+function release(e){
+  if(spin && spin.id===e.pointerId){ spin=null; if(!pointers.size&&!body.held) stage.classList.remove('grabbing'); return; }
+  if(body.held && body.held.id===e.pointerId){
+    body.held=null;
+    const sp=Math.hypot(body.vx,body.vy), cap=.3; if(sp>cap){ body.vx*=cap/sp; body.vy*=cap/sp; }   // a throw
+    if(!pointers.size&&!spin) stage.classList.remove('grabbing');
+    return;
+  }
+  const p=pointers.get(e.pointerId); if(!p) return;
+  pointers.delete(e.pointerId);
+  if(pinch && pinch.ids.includes(e.pointerId)) pinch.ids=[];   // pinch springs back
+  if(!pointers.size && !spin && !body.held) stage.classList.remove('grabbing');
+  const m=M(), effort=Math.min(1,p.press/(m.press*1.35+1e-6)*.7+Math.hypot(...p.pullS)/.6);
+  if(m.bouncy){ if(effort>.15) bonk(.25+effort*.35); if(body.y<.02) body.vy=.06+effort*.1; }   // a bouncy ball hops when you let go
+  else if(effort>.35) squish(effort*.7);
+  if(effort>.35) haptic(8);
+  if(m.clay){ if(!pointers.size) bakeClay(); }
+  else ghosts.push({w:p.w, n:p.n, gp:p.gp, pullS:p.pullS.slice(), press:p.press});
+}
+const ghosts=[];   // released touches, easing back out of the rubber
+['pointerup','pointercancel','lostpointercapture'].forEach(t=>stage.addEventListener(t,release));
+
+// clay keeps whatever shape it is in
+function bakeClay(){
+  rest.set(pos); vel.fill(0); g=0; gv=0; awake=10;
+  // clay has weight: whatever shape you made, it settles back down onto the table
+  let lo=Infinity; for(let i=1;i<rest.length;i+=3) if(rest[i]<lo) lo=rest[i];
+  const drop=lo-minY;
+  if(drop>.002){ for(let i=1;i<rest.length;i+=3) rest[i]-=drop; if(body.y<.001) body.vy=0; awake=60; }
+}
+
+const sq=$('squeeze');
+function sqOn(){ if(squeezing) return; squeezing=true; sqT=0; sq.classList.add('on'); $('hint').hidden=true; audioWake(); awake=200; haptic(10);
+  if(!M().bouncy) squish(.3);
+  for(let i=0;i<3;i++) spawnFinger(); }
+function sqOff(){
+  if(!squeezing) return; squeezing=false; sq.classList.remove('on'); bump();
+  for(const f of fingers) f.life=Math.min(f.life,f.age+10);    // fingers let go
+  if(M().clay){ squish(.5); bakeClay(); }
+  else if(M().bouncy){ bonk(.6); if(body.y<.02) body.vy=.17; }
+  else squish(.45);
+  haptic(8);
+}
+sq.addEventListener('pointerdown',e=>{ sq.setPointerCapture(e.pointerId); sqOn(); });
+['pointerup','pointercancel'].forEach(t=>sq.addEventListener(t,sqOff));
+sq.addEventListener('keydown',e=>{ if((e.key===' '||e.key==='Enter')&&!e.repeat){ e.preventDefault(); sqOn(); }});
+sq.addEventListener('keyup',e=>{ if(e.key===' '||e.key==='Enter') sqOff(); });
+window.addEventListener('keydown',e=>{ if(e.key===' '&&!e.repeat&&document.activeElement===document.body&&$('sheet').hidden){ e.preventDefault(); sqOn(); }});
+window.addEventListener('keyup',e=>{ if(e.key===' '&&document.activeElement===document.body) sqOff(); });
+function bump(){}
+
+/* ---------------- sounds ---------------- */
+let actx=null, lastFx=0;
+function realPressure(e){
+  // pens and some touchscreens report real pressure; a mouse always says 0.5 (or 0)
+  return (e.pointerType!=='mouse' && e.pressure>0 && e.pressure!==.5) ? e.pressure : null;
+}
+function haptic(ms){ if(!state.sound) return; try{ navigator.vibrate && navigator.vibrate(ms); }catch(_){} }
+function fxOK(){ const t=performance.now(); if(t-lastFx<220) return false; lastFx=t; return true; }
+function audioWake(){ if(!state.sound) return; try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); }catch(_){} }
+function noiseHit(amt,f0,f1,dur,q,vol){
+  if(!state.sound||!actx||!fxOK()) return;
+  vol*=.55;
+  const t=actx.currentTime;
+  const buf=actx.createBuffer(1,Math.ceil(actx.sampleRate*dur),actx.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*(1-i/d.length);
+  const src=actx.createBufferSource(); src.buffer=buf;
+  const bp=actx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=q;
+  bp.frequency.setValueAtTime(f0,t); bp.frequency.exponentialRampToValueAtTime(f1,t+dur);
+  const gn=actx.createGain(); gn.gain.setValueAtTime(0,t); gn.gain.linearRampToValueAtTime(vol,t+.015); gn.gain.exponentialRampToValueAtTime(.001,t+dur);
+  src.connect(bp).connect(gn).connect(actx.destination); src.start(t);
+}
+function squish(amt){
+  if(M().clay) return noiseHit(amt,500,140,.16+amt*.1,3,.3*amt+.1);      // dull clay squelch
+  if(state.mat==='foam') return noiseHit(amt,700,200,.22,2,.22*amt+.06);  // soft foam puff
+  noiseHit(amt,1100+amt*500,260,.18+amt*.12,6,.35*amt+.1);
+}
+function bonk(amt){
+  if(!state.sound||!actx||!fxOK()) return;
+  amt*=.6;
+  const t=actx.currentTime, o=actx.createOscillator(), gn=actx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(420+amt*120,t); o.frequency.exponentialRampToValueAtTime(140,t+.14);
+  gn.gain.setValueAtTime(0,t); gn.gain.linearRampToValueAtTime(.3*amt+.05,t+.006); gn.gain.exponentialRampToValueAtTime(.001,t+.2);
+  o.connect(gn).connect(actx.destination); o.start(t); o.stop(t+.22);
+}
+function thud(amt){ if(M().bouncy) bonk(amt); else squish(amt); }
+function renderMute(){
+  const b=$('sound');
+  b.setAttribute('aria-pressed',!state.sound); b.setAttribute('aria-label',state.sound?'Mute sound and vibration':'Unmute sound and vibration');
+  b.title=state.sound?'Mute':'Unmute';
+  b.innerHTML=(state.sound
+    ?'<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg>'
+    :'<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>');
+}
+function setSound(on){ state.sound=on; try{ localStorage.setItem('squish-sound',on?'1':'0'); }catch(_){} renderMute(); if(on) audioWake(); }
+try{ if(localStorage.getItem('squish-sound')==='0') state.sound=false; }catch(_){}
+renderMute();
+$('sound').addEventListener('click',()=>setSound(!state.sound));
+window.addEventListener('keydown',e=>{ if((e.key==='m'||e.key==='M')&&!e.metaKey&&!e.ctrlKey&&document.activeElement.tagName!=='INPUT') setSound(!state.sound); });
+
+/* ---------------- simulation ---------------- */
+const GRAV=.011;
+function stepBody(){
+  const m=M(), px=body.x, py=body.y;
+  if(body.held){
+    const nx=body.x+(body.tx-body.x)*.45, ny=body.y+(body.ty-body.y)*.45;
+    body.vx=nx-body.x; body.vy=ny-body.y; body.x=nx; body.y=ny;
+  } else {
+    body.vy-=GRAV; body.x+=body.vx; body.y+=body.vy;
+    if(body.y<=0){
+      const hitV=-body.vy; body.y=0;
+      if(hitV>.035){
+        gv+=Math.min(.3,hitV*m.impact*1.15); body.vy=hitV*m.bounce; body.vx*=.82;
+        if(body.vy<.03) body.vy=0;
+        if(hitV>.06){ thud(Math.min(1,hitV*4)); haptic(Math.round(6+hitV*60)); }
+        if(m.clay) clayBakeIn=7;
+      } else { body.vy=0; body.vx*=.82; }
+    }
+    if(Math.abs(body.x)>xLim){ body.x=Math.sign(body.x)*xLim; body.vx*=-.55; }
+    if(body.y>yLim+1){ body.y=yLim+1; body.vy=Math.min(0,body.vy); }
+    if(body.y===0 && Math.abs(body.vx)>.001) rotV+=body.vx*.02;    // a sideways slide turns it a little
+  }
+  // acceleration (world → ball frame) drives wobble and hair swing
+  const ax=(body.x-px)-body.pvx, ay=(body.y-py)-body.pvy;
+  body.pvx=body.x-px; body.pvy=body.y-py;
+  const c=Math.cos(-rotY), s=Math.sin(-rotY);
+  if(Math.abs(ax)+Math.abs(ay)>1e-5 || body.y>0) awake=Math.max(awake,30);
+  const cl=v=>Math.max(-.035,Math.min(.035,v));   // a bounce flips velocity in one frame; keep the jolt sane
+  return [cl(ax*c), cl(ay), cl(-ax*s)];
+}
+/* Hold to squeeze: an invisible hand kneads the ball — several fingers press in at
+   random spots, each with its own rhythm, while the overall grip tightens and eases. */
+const fingers=[]; let sqT=0;
+const ph=[Math.random()*6.3,Math.random()*6.3,Math.random()*6.3];
+function spawnFinger(){
+  const m=M(), nrm=geo.attributes.normal.array;
+  let vi=0; for(let tries=0;tries<20;tries++){ vi=(Math.random()*NV)|0; if(rest[vi*3+1]>minY+.15) break; }
+  const rx=rest[vi*3], ry=rest[vi*3+1], rz=rest[vi*3+2], w=new Float32Array(NV);
+  const sig=2*(.28+Math.random()*.18)**2;
+  for(let i=0;i<NV;i++){ const dx=rest[i*3]-rx, dy=rest[i*3+1]-ry, dz=rest[i*3+2]-rz; const d=(dx*dx+dy*dy+dz*dz)/sig; w[i]=d<7?Math.exp(-d):0; }
+  const n=[nrm[vi*3],nrm[vi*3+1],nrm[vi*3+2]];
+  // a little sideways knead along the surface
+  let t=[Math.random()-.5,Math.random()-.5,Math.random()-.5]; const dot=t[0]*n[0]+t[1]*n[1]+t[2]*n[2];
+  t=t.map((v,a)=>v-dot*n[a]); const tl=Math.hypot(...t)||1; t=t.map(v=>v/tl*(.04+Math.random()*.08));
+  fingers.push({w,n,t,press:0,pull:[0,0,0],age:0,life:45+Math.random()*55,depth:m.press*(1.1+Math.random()*1.1),
+    f:.08+Math.random()*.1, p:Math.random()*6.3});
+}
+function stepFingers(){
+  if(squeezing){ sqT++; if(fingers.length<4 && Math.random()<.05) spawnFinger(); }
+  for(let i=fingers.length-1;i>=0;i--){
+    const f=fingers[i]; f.age++;
+    if(f.age>=f.life){ fingers.splice(i,1); continue; }
+    const env=Math.sin(Math.PI*f.age/f.life), pulse=.75+.25*Math.sin(f.p+f.age*f.f);
+    f.press=f.depth*env*pulse; const k=env*Math.sin(f.age*.05);
+    f.pull=[f.t[0]*k,f.t[1]*k,f.t[2]*k];
+  }
+  if(fingers.length) awake=Math.max(awake,30);
+}
+// compare each vertex's distance to its grid neighbours now vs at rest; shrinking = wrinkling
+function measureCompression(){
+  const R=WS+1;
+  for(let j=0;j<=HS;j++) for(let i=0;i<=WS;i++){
+    const k=j*R+i, nb=[i<WS?k+1:k-1, j<HS?k+R:k-R];
+    let c=0;
+    for(const q of nb){
+      const d=Math.hypot(pos[k*3]-pos[q*3],pos[k*3+1]-pos[q*3+1],pos[k*3+2]-pos[q*3+2]);
+      const d0=Math.hypot(rest[k*3]-rest[q*3],rest[k*3+1]-rest[q*3+1],rest[k*3+2]-rest[q*3+2])||1e-6;
+      c=Math.max(c,1-d/d0);
+    }
+    const tgt=Math.min(1,Math.max(0,(c-.025)*4.5));
+    comp[k]+=(tgt-comp[k])*.35;
+  }
+  geo.attributes.aComp.needsUpdate=true;
+}
+function step(acc){
+  const m=M();
+  stepFingers();
+  // the grip is never steady: it tightens and eases on a few overlapping rhythms
+  const grip=squeezing?(.24+.09*Math.sin(sqT*.045+ph[0])+.06*Math.sin(sqT*.11+ph[1])+.04*Math.sin(sqT*.23+ph[2]))*Math.min(1,sqT/12):0;
+  // pressing on the top flattens the whole ball, in proportion to how hard
+  let topPress=0; for(const p of pointers.values()) topPress+=p.press*Math.max(0,p.n[1])*.7;
+  // stretch while flying, hang while held
+  const air=(!body.held && body.y>0)?-Math.min(.12,Math.abs(body.vy)*1.3)*m.jig:0;
+  const gT=grip+topPress+air+(body.held?-.05*m.jig:0);
+  const gk=(gT>g+.002)?.16:Math.max(.03,(1-m.reb)*1.1);             // squash quickly, recover slowly
+  gv=(gv+(gT-g)*gk)*.80; g+=gv; g=Math.max(-.2,Math.min(.62,g));
+  if(clayBakeIn>0 && --clayBakeIn===0) bakeClay();
+  let bulge=0;
+  const now=performance.now();
+  let lean=[0,0,0];
+  for(const p of pointers.values()){
+    // force builds the longer you press (or follows real pen/touch pressure)
+    const hold=(now-p.t0)/1000, force=p.force!=null?.25+p.force*1.1:.3+.75*(1-Math.exp(-hold/.55));
+    const pl=Math.hypot(...p.pullS), pt=m.press*1.35*force*(1-Math.min(1,pl/.45));   // pulling eases the dent
+    p.press+=(pt-p.press)*.09;
+    // the rubber resists: it trails behind the finger instead of jumping to it
+    for(let a=0;a<3;a++){ p.pullS[a]+=(p.pull[a]-p.pullS[a])*m.follow; lean[a]+=p.pullS[a]*.06; }
+    bulge+=p.press*.22;
+  }
+  for(let gi=ghosts.length-1;gi>=0;gi--){
+    const q=ghosts[gi]; q.press*=m.reb; for(let a=0;a<3;a++) q.pullS[a]*=m.reb;
+    if(q.press<.002 && Math.hypot(...q.pullS)<.002) ghosts.splice(gi,1); else bulge+=q.press*.22;
+  }
+  if(ghosts.length) awake=Math.max(awake,30);
+  for(const f of fingers) bulge+=f.press*.18;
+  let pz=null;
+  if(pinch){
+    const holding=pinch.src==='wheel'?pinch.live:pinch.ids.length===2;
+    const tgt=(holding?pinch.target:0)*(m.bouncy?.3:1);
+    pinch.amt+=(tgt-pinch.amt)*(holding?.2:Math.max(.04,1-m.reb));
+    if(!holding && Math.abs(pinch.amt)<.003) pinch=null;
+    else{ pz=pinch; awake=Math.max(awake,30); }
+  }
+  if(awake<=0 && Math.abs(gv)<1e-5) return false;
+  let maxV=0;
+  const jx=acc[0]*m.jig*1.6, jy=acc[1]*m.jig*1.6, jz=acc[2]*m.jig*1.6;
+  for(let i=0;i<NV;i++){
+    const i3=i*3, rx=rest[i3], ry=rest[i3+1], rz=rest[i3+2], yn=(ry-midY)/halfH;
+    const sx=1+.75*g*(1-.45*yn*yn);
+    let tx=rx*sx, ty=minY+(ry-minY)*(1-g), tz=rz*sx, kk=0;
+    if(pz){
+      // squeeze along the line between the fingers, bulge out around it (rubber keeps its volume)
+      const vx=tx-pz.c.x, vy=ty-pz.c.y, vz=tz-pz.c.z, al=vx*pz.axis.x+vy*pz.axis.y+vz*pz.axis.z;
+      const qx=vx-pz.axis.x*al, qy=vy-pz.axis.y*al, qz=vz-pz.axis.z*al, q2=qx*qx+qy*qy+qz*qz;
+      const loc=Math.exp(-q2/.9), c=pz.amt*loc, bulgeF=c*.55;
+      tx+=-pz.axis.x*al*c+qx*bulgeF; ty+=-pz.axis.y*al*c+qy*bulgeF; tz+=-pz.axis.z*al*c+qz*bulgeF;
+      kk+=Math.abs(c)*.6;
+    }
+    const hfl=(ry-minY)/(2*halfH);
+    tx+=lean[0]*hfl; tz+=lean[2]*hfl;                                  // the whole ball leans with your drag
+    for(const src of [pointers.values(), ghosts]) for(const p of src){
+      const w=p.w[i]; if(w<.003) continue;
+      const P0=p.pullS[0], P1=p.pullS[1], P2=p.pullS[2];
+      tx+=w*(P0-p.n[0]*p.press); ty+=w*(P1-p.n[1]*p.press); tz+=w*(P2-p.n[2]*p.press); kk+=w;
+      // a stretched part gets thinner around the pull (rubber keeps its volume)
+      const sl=Math.hypot(P0,P1,P2);
+      if(sl>.01){
+        const ux=P0/sl, uy=P1/sl, uz=P2/sl, vx=rx-p.gp[0], vy=ry-p.gp[1], vz=rz-p.gp[2], al=vx*ux+vy*uy+vz*uz;
+        const nk=Math.min(.3,sl*.55)*w*(1-w)*3;
+        tx-=(vx-ux*al)*nk; ty-=(vy-uy*al)*nk; tz-=(vz-uz*al)*nk;
+      }
+    }
+    for(const f of fingers){
+      const w=f.w[i]; if(w<.003) continue;
+      tx+=w*(f.pull[0]-f.n[0]*f.press); ty+=w*(f.pull[1]-f.n[1]*f.press); tz+=w*(f.pull[2]-f.n[2]*f.press); kk+=w*.6;
+    }
+    if(bulge){ const b=bulge*(1-Math.min(1,kk*1.6)); tx+=baseN[i3]*b; ty+=baseN[i3+1]*b*.5; tz+=baseN[i3+2]*b; }
+    const k=m.k+.42*Math.min(1,kk), hf=.2+.8*(ry-minY)/(2*halfH);
+    vel[i3]=(vel[i3]-jx*hf+(tx-pos[i3])*k)*m.damp;
+    vel[i3+1]=(vel[i3+1]-jy*hf+(ty-pos[i3+1])*k)*m.damp;
+    vel[i3+2]=(vel[i3+2]-jz*hf+(tz-pos[i3+2])*k)*m.damp;
+    pos[i3]+=vel[i3]; pos[i3+1]+=vel[i3+1]; pos[i3+2]+=vel[i3+2];
+    if(body.y<.001 && pos[i3+1]<minY){ pos[i3+1]=minY; vel[i3+1]=0; }
+    const v=Math.abs(vel[i3])+Math.abs(vel[i3+1])+Math.abs(vel[i3+2]); if(v>maxV) maxV=v;
+  }
+  P.needsUpdate=true;
+  if(m.wr) measureCompression();
+  geo.computeVertexNormals(); fixSeams();
+  if(pointers.size||squeezing||fingers.length||ghosts.length||body.held||maxV>2e-5) awake=Math.max(awake,30); else awake--;
+  return true;
+}
+
+function frame(){
+  if(!spin){ rotY+=rotV; rotV*=.93; }
+  group.rotation.y=rotY;
+  const acc=stepBody();
+  group.position.set(body.x,body.y,0);
+  key.position.set(body.x-2.6,body.y+5,3.6); key.target.position.set(body.x,body.y,0);
+  step(acc); updateHair(acc);
+  renderContactShadow();
+  renderer.render(scene,camera);
+  requestAnimationFrame(frame);
+}
+
+/* ---------------- layout ---------------- */
+function layout(){
+  const r=stage.getBoundingClientRect(), w=Math.max(1,r.width), h=Math.max(1,r.height), asp=w/h;
+  renderer.setSize(w,h,false);
+  camera.aspect=asp;
+  const dist=Math.max(7.6, 6.4/asp);
+  camera.position.set(0, dist*.16, dist);
+  camera.lookAt(0,asp<.8?-.3:.28,0);   // keep the ball clear of the dock
+  camera.updateProjectionMatrix();
+  const halfH=dist*Math.tan(THREE.MathUtils.degToRad(14));
+  xLim=Math.max(.2, halfH*asp-1.15); yLim=Math.max(.3, halfH-1.25);
+}
+new ResizeObserver(layout).observe(stage);
+
+/* ---------------- controls ---------------- */
+function swatchRow(wrap,list,cur,small,onPick){
+  wrap.innerHTML='';
+  list.forEach((c,i)=>{
+    const b=document.createElement('button');
+    b.className='sw'+(small?' small':''); b.style.background=c.base; b.setAttribute('role','radio');
+    b.setAttribute('aria-checked',i===cur); b.setAttribute('aria-label',c.name); b.id=wrap.id+'-'+i;
+    b.onclick=()=>{ wrap.querySelectorAll('.sw').forEach((x,j)=>x.setAttribute('aria-checked',j===i)); onPick(i); };
+    wrap.appendChild(b);
+  });
+}
+function buildSwatches(){
+  swatchRow($('swatches'),M().palette,state.color,false,i=>{ state.color=i; applyMaterial(); if(state.style==='features'&&state.marks) buildFace(); });
+}
+swatchRow($('hairSwatches'),HAIR_COLORS,state.hairColor,true,i=>{ state.hairColor=i; buildHair(); });
+const pressed=(id,attr,val)=>$(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x.dataset[attr]===val));
+function setStyle(v){ state.style=v; pressed('styleSeg','style',v); }
+function setHair(v){ state.hair=v; pressed('hairSeg','hair',v); $('hairSwatches').hidden=v==='none'; buildHair(); }
+$('styleSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; setStyle(b.dataset.style); buildFace(); });
+$('hairSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; state.hairTouched=true; setHair(b.dataset.hair); });
+$('matSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b||b.dataset.mat===state.mat) return;
+  state.mat=b.dataset.mat; state.color=0; pressed('matSeg','mat',state.mat);
+  setStyle(M().face);
+  if(!state.hairTouched) setHair(state.preset==='me'?M().hair:'none');
+  buildSwatches(); applyMaterial(); buildFace(); pos.set(rest); vel.fill(0);
+  if(body.y<.02) body.vy=.07;    // a little hop to show off the new material
+});
+function wobble(a){ for(let i=0;i<NV;i++) vel[i*3+1]+=a*front[i]; awake=120; }
+$('reset').onclick=()=>{
+  buildFace(); pos.set(rest); vel.fill(0); g=gv=0; clayBakeIn=0; ghosts.length=0;
+  Object.assign(body,{x:0,y:0,vx:0,vy:0,pvx:0,pvy:0,held:null}); rotY=0; rotV=0;
+  HAIR.forEach(h=>{h.tip=null;h.tv=[0,0,0];}); awake=5;
+};
+
+/* ---------------- photo + crop ---------------- */
+const CROP={w:300,h:340,fw:240,fh:Math.round(240*FACE.ry/FACE.rx)}; CROP.fl=(CROP.w-CROP.fw)/2; CROP.ft=(CROP.h-CROP.fh)/2;
+const cropCv=$('crop'), cctx=cropCv.getContext('2d');
+let draft=null;
+$('photo').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadFile(f); e.target.value=''; });
+/* Pinch: two fingers on the ball squeeze it between them (spread them to stretch it).
+   A trackpad pinch does the same across the ball. */
+let pinch=null;
+function toLocal(v){ return v.clone().sub(group.position).applyAxisAngle(Y_AXIS,-rotY); }
+function startPinch(){
+  const [[ia,a],[ib,b]]=[...pointers.entries()];
+  const A=toLocal(a.start), B=toLocal(b.start), ax=B.clone().sub(A); ax.y*=.6;   // keep it mostly side to side
+  if(ax.lengthSq()<1e-4) ax.set(1,0,0);
+  pinch={ids:[ia,ib], d0:Math.max(30,Math.hypot(a.cx-b.cx,a.cy-b.cy)), axis:ax.normalize(),
+    c:A.add(B).multiplyScalar(.5), target:0, amt:0, src:'touch'};
+  a.pull=[0,0,0]; b.pull=[0,0,0];
+}
+let wheelT=null;
+stage.addEventListener('wheel',e=>{
+  if(!e.ctrlKey) return;                      // browsers report trackpad pinches as ctrl+wheel
+  e.preventDefault(); audioWake(); $('hint').hidden=true;
+  if(!pinch || pinch.src!=='wheel') pinch={ids:[], src:'wheel', axis:new THREE.Vector3(1,0,0).applyAxisAngle(Y_AXIS,-rotY),
+    c:new THREE.Vector3(0,midY,0), target:0, amt:pinch?pinch.amt:0, d0:1};
+  pinch.target=Math.max(-.35,Math.min(.6,pinch.target+e.deltaY*.012));
+  pinch.live=true; clearTimeout(wheelT);
+  wheelT=setTimeout(()=>{ if(pinch&&pinch.src==='wheel'){ pinch.live=false; if(M().clay) setTimeout(bakeClay,350); else squish(.5); } },160);
+  awake=200;
+},{passive:false});
+stage.addEventListener('dragover',e=>e.preventDefault());
+stage.addEventListener('drop',e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) loadFile(f); });
+function status(msg,ms){
+  const s=$('status'); clearTimeout(status.t);
+  if(!msg){ s.hidden=true; return; }
+  s.textContent=msg; s.hidden=false;
+  if(ms) status.t=setTimeout(()=>{ s.hidden=true; },ms);
+}
+let detectorP=null;
+// weights ship beside the page as base64 text; decode them into the network directly
+async function loadNet(net,name){
+  const [man,b64]=await Promise.all([
+    fetch(`models/${name}-weights_manifest.json`).then(r=>{ if(!r.ok) throw 0; return r.json(); }),
+    fetch(`models/${name}.b64.txt`).then(r=>{ if(!r.ok) throw 0; return r.text(); })
+  ]);
+  const bin=atob(b64.trim()), bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  net.loadFromWeightMap(faceapi.tf.io.decodeWeights(bytes.buffer, man[0].weights));
+}
+function loadDetector(){
+  if(detectorP) return detectorP;
+  detectorP=new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js';
+    sc.onload=res; sc.onerror=rej; document.head.appendChild(sc);
+  }).then(async()=>{
+    // GPU if the browser gives us a second WebGL context, otherwise plain CPU (no extra downloads)
+    const tf=faceapi.tf; let ok=false;
+    try{ ok=await tf.setBackend('webgl'); }catch(_){ ok=false; }
+    if(!ok) await tf.setBackend('cpu');
+    await tf.ready();
+  }).then(()=>Promise.all([
+    loadNet(faceapi.nets.tinyFaceDetector,'tiny_face_detector_model'),
+    loadNet(faceapi.nets.faceLandmark68Net,'face_landmark_68_model')
+  ]));
+  detectorP.catch(()=>{ detectorP=null; });
+  return detectorP;
+}
+async function findFace(img){
+  await loadDetector();
+  const det=await faceapi.detectSingleFace(img,new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:.35})).withFaceLandmarks();
+  if(!det) return null;
+  return marksFromL(det.landmarks.positions.map(p=>[p.x,p.y]));
+}
+function marksFromL(L){
+  const mean=(a,b)=>{ let x=0,y=0; for(let i=a;i<=b;i++){x+=L[i][0];y+=L[i][1];} return [x/(b-a+1),y/(b-a+1)]; };
+  const dist=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);
+  const le=mean(36,41), re=mean(42,47), mo=mean(48,59);
+  const ang=Math.atan2(re[1]-le[1],re[0]-le[0]), up=[Math.sin(ang),-Math.cos(ang)];
+  const eyeW=(dist(L[36],L[39])+dist(L[42],L[45]))/2, mW=dist(L[48],L[54]), mH=dist(L[51],L[57]);
+  const eye=e=>({c:[e[0]+up[0]*eyeW*.3,e[1]+up[1]*eyeW*.3],rx:eyeW*1.0,ry:eyeW*.88,rot:ang,boost:1.18});
+  return { L, mid:[(le[0]+re[0])/2,(le[1]+re[1])/2], d:dist(le,re), ang,
+    feats:[ {c:[mo[0]-up[0]*mW*.04,mo[1]-up[1]*mW*.04],rx:mW*.74,ry:Math.max(mH*.95,mW*.34),rot:ang,boost:1.22}, eye(le), eye(re) ] };
+}
+function autoCrop(img,mk){
+  const k=(2*FACE.rx*TEX)/CROP.fw, s=(.2*TEX/k)/mk.d;
+  const eyeY=CROP.h/2+(EYE_LINE-FACE.cy)/FACE.ry*(CROP.fh/2);
+  return { s, ox:CROP.w/2-mk.mid[0]*s, oy:eyeY-mk.mid[1]*s };
+}
+function loadFile(f){
+  const im=new Image();
+  im.onload=async()=>{
+    // work from a copy no bigger than 1600px: quicker to detect, warp and draw
+    const sc=Math.min(1,1600/Math.max(im.naturalWidth,im.naturalHeight)), img=document.createElement('canvas');
+    img.width=Math.round(im.naturalWidth*sc); img.height=Math.round(im.naturalHeight*sc);
+    img.getContext('2d').drawImage(im,0,0,img.width,img.height); img.naturalWidth=img.width; img.naturalHeight=img.height;
+    closePop(); status('Finding your face…');
+    let mk=null;
+    try{ mk=await findFace(img); }catch(err){ console.error('Face detection failed:',err); mk=null; }
+    state.src=img; state.srcMarks=mk; state.expr='none';
+    if(!mk){ status('Couldn’t find a face automatically. Frame it by hand.',4000); state.marks=null; buildExprRow(); openCrop(img,null); return; }
+    status('Found you!',1600);
+    state.img=img; state.marks=mk; state.crop=autoCrop(img,mk);
+    $('adjust').hidden=false;
+    if(state.style!=='sculpt') setStyle('features');
+    buildExprRow(); setPreset('me'); wobble(.06);
+  };
+  im.onerror=()=>status('That file didn’t open as an image. Try a JPG or PNG.',4000);
+  im.src=URL.createObjectURL(f);
+}
+function openCrop(img,prev){
+  const b=Math.max(CROP.fw/img.naturalWidth,CROP.fh/img.naturalHeight);
+  draft = prev ? {img,base:b,z:prev.s/b,ox:prev.ox,oy:prev.oy}
+               : {img,base:b,z:1,ox:(CROP.w-img.naturalWidth*b)/2,oy:(CROP.h-img.naturalHeight*b)/2};
+  $('zoom').value=draft.z; $('sheet').hidden=false;
+  const d=Math.min(window.devicePixelRatio||1,2); cropCv.width=CROP.w*d; cropCv.height=CROP.h*d;
+  drawCrop(); $('applyCrop').focus();
+}
+function drawCrop(){
+  const d=cropCv.width/CROP.w, x=cctx, {img}=draft, s=draft.base*draft.z, cx=CROP.w/2, cy=CROP.h/2;
+  x.setTransform(d,0,0,d,0,0); x.fillStyle='#222'; x.fillRect(0,0,CROP.w,CROP.h);
+  x.drawImage(img,draft.ox,draft.oy,img.naturalWidth*s,img.naturalHeight*s);
+  x.fillStyle='rgba(0,0,0,.55)'; x.beginPath(); x.rect(0,0,CROP.w,CROP.h);
+  x.ellipse(cx,cy,CROP.fw/2,CROP.fh/2,0,0,Math.PI*2); x.fill('evenodd');
+  x.strokeStyle='rgba(255,255,255,.9)'; x.lineWidth=2; x.setLineDash([]);
+  x.beginPath(); x.ellipse(cx,cy,CROP.fw/2,CROP.fh/2,0,0,Math.PI*2); x.stroke();
+  const ey=cy+(EYE_LINE-FACE.cy)/FACE.ry*(CROP.fh/2);
+  x.setLineDash([4,5]); x.strokeStyle='rgba(255,255,255,.7)'; x.lineWidth=1.5;
+  x.beginPath(); x.moveTo(cx-CROP.fw*.36,ey); x.lineTo(cx+CROP.fw*.36,ey); x.stroke(); x.setLineDash([]);
+}
+function zoomTo(z,ax=CROP.w/2,ay=CROP.h/2){
+  z=Math.max(.3,Math.min(4,z)); const r=z/draft.z;
+  draft.ox=ax-(ax-draft.ox)*r; draft.oy=ay-(ay-draft.oy)*r; draft.z=z; $('zoom').value=z; drawCrop();
+}
+$('zoom').addEventListener('input',e=>zoomTo(+e.target.value));
+const cp=new Map(); let pinch0=null;
+function cropPt(e){ const r=cropCv.getBoundingClientRect(); return [(e.clientX-r.left)*CROP.w/r.width,(e.clientY-r.top)*CROP.h/r.height]; }
+cropCv.addEventListener('pointerdown',e=>{ cropCv.setPointerCapture(e.pointerId); cp.set(e.pointerId,cropPt(e)); if(cp.size===2){ const [a,b]=[...cp.values()]; pinch0={d:Math.hypot(a[0]-b[0],a[1]-b[1]),z:draft.z}; } });
+cropCv.addEventListener('pointermove',e=>{
+  if(!cp.has(e.pointerId)) return;
+  const prev=cp.get(e.pointerId), now=cropPt(e); cp.set(e.pointerId,now);
+  if(cp.size===2&&pinch0){ const [a,b]=[...cp.values()]; zoomTo(pinch0.z*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch0.d,(a[0]+b[0])/2,(a[1]+b[1])/2); }
+  else { draft.ox+=now[0]-prev[0]; draft.oy+=now[1]-prev[1]; drawCrop(); }
+});
+['pointerup','pointercancel'].forEach(t=>cropCv.addEventListener(t,e=>{ cp.delete(e.pointerId); if(cp.size<2) pinch0=null; }));
+cropCv.addEventListener('wheel',e=>{ e.preventDefault(); const [x,y]=cropPt(e); zoomTo(draft.z*Math.exp(-e.deltaY*.0015),x,y); },{passive:false});
+$('cancelCrop').onclick=()=>{ $('sheet').hidden=true; draft=null; };
+$('applyCrop').onclick=()=>{
+  state.img=draft.img; state.crop={s:draft.base*draft.z,ox:draft.ox,oy:draft.oy};
+  $('sheet').hidden=true; $('adjust').hidden=false; draft=null;
+  if(state.preset!=='me') setPreset('me'); else buildFace();
+  renderPresetRow(); wobble(.06);
+};
+$('adjust').onclick=()=>{ if(state.img) openCrop(state.img,state.crop); };
+window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('sheet').hidden) $('cancelCrop').click(); });
+
+/* ================= presets =================
+   Each preset is a colour pattern painted per vertex, 3D bumps (ears, beaks, snouts)
+   pushed out of the same squishy mesh, and a face drawn on the front. */
+const V3=(x,y,z)=>{ const l=Math.hypot(x,y,z); return [x/l,y/l,z/l]; };
+const PROFILE={
+  dome:t=>(1-t*t)*(1-t*t),
+  cone:t=>(1-t)*Math.min(1,(1-t)*3.2),
+  flat:t=>{ const u=Math.min(1,Math.max(0,(1-t)/.3)); return u*u*(3-2*u); }
+};
+// where a direction on the ball lands in the face texture (0..1, y down)
+function texPos(d){ const y=d[1]*1.12, k=1+.09*(-d[1]); return [.5+d[0]*k/2.4, 1-(.5+y/2.4)]; }
+const PRESETS={
+  smiley:{name:'Smiley', base:'#F6A8BB'},
+  frog:{name:'Frog', base:'#69B957', bumps:[[V3(-.36,.5,.78),.24,.2,'dome'],[V3(.36,.5,.78),.24,.2,'dome']]},
+  chick:{name:'Chick', base:'#FFD45A', bumps:[[V3(0,-.02,1),.13,.17,'cone','#FF9437']]},
+  kitty:{name:'Kitty', base:'#F4F1EB', bumps:[[V3(-.5,.82,.2),.28,.34,'cone','#9C9AA0'],[V3(.5,.82,.2),.28,.34,'cone','#9C9AA0']], cap:'#A7A5AB', inner:'#F2B5C1'},
+  puppy:{name:'Puppy', base:'#E7C18D', bumps:[[V3(0,-.22,1),.33,.06,'dome','#F7E8CC'],[V3(0,-.07,1),.09,.07,'dome','#2B2320'],
+    [V3(-.84,.42,.06),.3,.2,'dome','#B98450'],[V3(.84,.42,.06),.3,.2,'dome','#B98450'],[V3(-.88,.1,.06),.26,.16,'dome','#B98450'],[V3(.88,.1,.06),.26,.16,'dome','#B98450']]},
+  panda:{name:'Panda', base:'#F5F4F0', bumps:[[V3(-.55,.8,.12),.2,.2,'dome','#2A2A2E'],[V3(.55,.8,.12),.2,.2,'dome','#2A2A2E']]},
+  piggy:{name:'Piggy', base:'#F8B9C5', bumps:[[V3(0,-.12,1),.17,.1,'flat','#F391A8'],[V3(-.55,.8,.3),.2,.18,'cone','#F391A8'],[V3(.55,.8,.3),.2,.18,'cone','#F391A8']]},
+  bear:{name:'Bear', base:'#A9774C', bumps:[[V3(-.58,.78,.12),.2,.2,'dome','#8A5C37'],[V3(.58,.78,.12),.2,.2,'dome','#8A5C37'],
+    [V3(0,-.18,1),.26,.07,'dome','#E2C29C'],[V3(0,-.08,1),.07,.05,'dome','#3A2A20']]}
+};
+const lin=hex=>new THREE.Color(hex).convertSRGBToLinear();
+function applyPreset(f){
+  const P=PRESETS[state.preset], bc=lin(P.base), tmp=new THREE.Color();
+  const bumps=(P.bumps||[]).map(b=>({c:b[0],r:b[1],h:b[2],prof:PROFILE[b[3]],col:b[4]?lin(b[4]):null}));
+  const cap=P.cap?lin(P.cap):null, inner=P.inner?lin(P.inner):null;
+  for(let i=0;i<NV;i++){
+    const x=base[i*3], y=base[i*3+1], z=base[i*3+2], l=Math.hypot(x,y,z), d=[x/l,y/l,z/l];
+    let disp=0; tmp.copy(bc);
+    if(cap){ // a grey cap over the back of a cat's head
+      const t=Math.min(1,Math.max(0,(d[1]-.45-.35*d[2])/.12)); tmp.lerp(cap,t);
+    }
+    for(const b of bumps){
+      const a=Math.acos(Math.max(-1,Math.min(1,d[0]*b.c[0]+d[1]*b.c[1]+d[2]*b.c[2]))), t=a/b.r;
+      if(t<1) disp+=b.h*b.prof(t);
+      if(b.col && t<1.08){
+        const edge=Math.min(1,Math.max(0,(1.08-t)/.16));
+        tmp.lerp(b.col,edge);
+        if(inner && t<.6 && d[2]>b.c[2]+.02) tmp.lerp(inner,Math.min(1,(.6-t)/.15));   // pink inside the ear
+      }
+    }
+    for(let a=0;a<3;a++) rest[i*3+a]=base[i*3+a]+baseN[i*3+a]*disp;
+    aoCol[i*3]=tmp.r; aoCol[i*3+1]=tmp.g; aoCol[i*3+2]=tmp.b;
+  }
+  geo.attributes.color.needsUpdate=true;
+  paintPresetFace(f,state.preset,TEX);
+}
+// faces, drawn in face-texture units (eyes sit near y .45, mouth near .55)
+function paintPresetFace(c,key,T){
+  const E=(x,y,rx,ry,col,rot=0)=>{ c.fillStyle=col; c.beginPath(); c.ellipse(x*T,y*T,rx*T,ry*T,rot,0,Math.PI*2); c.fill(); };
+  const eye=(x,y,r)=>{ E(x,y,r,r*1.15,'#17151A'); E(x+r*.32,y-r*.38,r*.3,r*.3,'#FFFFFF'); };
+  const blush=(x,y,col='rgba(255,110,130,.38)')=>{ const g=c.createRadialGradient(x*T,y*T,0,x*T,y*T,.05*T); g.addColorStop(0,col); g.addColorStop(1,'rgba(255,110,130,0)'); c.fillStyle=g; c.fillRect((x-.06)*T,(y-.06)*T,.12*T,.12*T); };
+  const line=(pts,w,col='#17151A')=>{ c.strokeStyle=col; c.lineWidth=w*T; c.lineCap='round'; c.lineJoin='round'; c.beginPath(); pts.forEach((q,i)=>i?c.lineTo(q[0]*T,q[1]*T):c.moveTo(q[0]*T,q[1]*T)); c.stroke(); };
+  const arc=(x,y,r,a0,a1,w,col='#17151A')=>{ c.strokeStyle=col; c.lineWidth=w*T; c.lineCap='round'; c.beginPath(); c.arc(x*T,y*T,r*T,a0,a1); c.stroke(); };
+  c.save();
+  if(key==='smiley'){ eye(.42,.46,.024); eye(.58,.46,.024); arc(.5,.5,.07,.2*Math.PI,.8*Math.PI,.013); blush(.37,.53); blush(.63,.53); }
+  else if(key==='frog'){
+    for(const sx of [-1,1]){ const [u,v]=texPos(V3(.36*sx,.4,.86)); E(u,v,.058,.058,'#FFFFFF'); E(u+.004*sx,v+.008,.032,.034,'#17151A'); E(u+.014,v-.006,.01,.01,'#FFFFFF'); }
+    arc(.5,.45,.12,.28*Math.PI,.72*Math.PI,.012); blush(.35,.5,'rgba(255,120,120,.35)'); blush(.65,.5,'rgba(255,120,120,.35)');
+  }
+  else if(key==='chick'){ eye(.415,.45,.022); eye(.585,.45,.022); blush(.36,.52); blush(.64,.52); }
+  else if(key==='kitty'){
+    arc(.42,.46,.028,1.15*Math.PI,1.85*Math.PI,.009); arc(.58,.46,.028,1.15*Math.PI,1.85*Math.PI,.009);
+    c.fillStyle='#F28CA5'; c.beginPath(); c.moveTo(.485*T,.505*T); c.lineTo(.515*T,.505*T); c.lineTo(.5*T,.523*T); c.closePath(); c.fill();
+    line([[.5,.523],[.5,.535]],.006); arc(.486,.535,.014,.1*Math.PI,.95*Math.PI,.006); arc(.514,.535,.014,.05*Math.PI,.9*Math.PI,.006);
+    for(const sx of [-1,1]) for(const k of [-1,0,1]) line([[.5+sx*.07,.52+k*.012],[.5+sx*.15,.51+k*.022]],.004,'rgba(90,85,95,.55)');
+    blush(.38,.52); blush(.62,.52);
+  }
+  else if(key==='puppy'){
+    eye(.41,.44,.026); eye(.59,.44,.026);
+    c.fillStyle='#5A1F25'; c.beginPath(); c.moveTo(.45*T,.57*T); c.quadraticCurveTo(.5*T,.55*T,.55*T,.57*T); c.quadraticCurveTo(.55*T,.65*T,.5*T,.655*T); c.quadraticCurveTo(.45*T,.65*T,.45*T,.57*T); c.fill();
+    E(.5,.625,.033,.028,'#F07A8C'); line([[.5,.605],[.5,.63]],.004,'rgba(150,40,60,.6)');
+    line([[.5,.548],[.5,.567]],.006,'#3A2A26');
+  }
+  else if(key==='panda'){
+    E(.405,.465,.052,.068,'#26262A',-.55); E(.595,.465,.052,.068,'#26262A',.55);
+    E(.41,.46,.018,.02,'#FFFFFF'); E(.59,.46,.018,.02,'#FFFFFF'); E(.413,.462,.01,.012,'#17151A'); E(.587,.462,.01,.012,'#17151A');
+    E(.5,.525,.024,.016,'#26262A'); arc(.487,.545,.013,.1*Math.PI,.95*Math.PI,.006); arc(.513,.545,.013,.05*Math.PI,.9*Math.PI,.006);
+  }
+  else if(key==='piggy'){
+    eye(.41,.43,.02); eye(.59,.43,.02);
+    const [u,v]=texPos(V3(0,-.12,1)); E(u-.028,v,.011,.017,'#B85570'); E(u+.028,v,.011,.017,'#B85570');
+    arc(.5,.585,.03,.2*Math.PI,.8*Math.PI,.008); blush(.35,.52); blush(.65,.52);
+  }
+  else if(key==='bear'){ eye(.415,.45,.022); eye(.585,.45,.022); line([[.5,.56],[.5,.585]],.007,'#3A2A20'); arc(.485,.585,.015,.1*Math.PI,.9*Math.PI,.007,'#3A2A20'); arc(.515,.585,.015,.1*Math.PI,.9*Math.PI,.007,'#3A2A20'); }
+  c.restore();
+}
+
+/* ================= expressions =================
+   Move the 68 face points, then warp the photo to follow them (piecewise-affine).
+   The cut-out features and the sculpt both read the moved points, so they follow too. */
+const EXPRS=[['none','Original'],['smile','Smile'],['wink','Wink'],['kiss','Kiss'],['wow','Surprised'],['grumpy','Grumpy'],['sleepy','Sleepy']];
+function exprPoints(L,key){
+  const D=L.map(q=>q.slice());
+  if(key==='none') return D;
+  const dist=(a,b)=>Math.hypot(L[a][0]-L[b][0],L[a][1]-L[b][1]);
+  const ew=(dist(36,39)+dist(42,45))/2, mW=dist(48,54);
+  const le=[(L[36][0]+L[39][0])/2,(L[36][1]+L[39][1])/2], re=[(L[42][0]+L[45][0])/2,(L[42][1]+L[45][1])/2];
+  const a=Math.atan2(re[1]-le[1],re[0]-le[0]), ux=[Math.cos(a),Math.sin(a)], uy=[-Math.sin(a),Math.cos(a)];
+  const mv=(i,dx,dy)=>{ D[i][0]+=ux[0]*dx+uy[0]*dy; D[i][1]+=ux[1]*dx+uy[1]*dy; };
+  const to=(i,j,t)=>{ D[i][0]+=(L[j][0]-L[i][0])*t; D[i][1]+=(L[j][1]-L[i][1])*t; };
+  if(key==='smile'){
+    mv(48,-.1*mW,-.17*mW); mv(54,.1*mW,-.17*mW); mv(60,-.07*mW,-.15*mW); mv(64,.07*mW,-.15*mW);
+    mv(49,-.03*mW,-.08*mW); mv(53,.03*mW,-.08*mW); mv(59,0,-.06*mW); mv(55,0,-.06*mW); mv(67,0,-.05*mW); mv(65,0,-.05*mW);
+    for(const i of [40,41,46,47]) mv(i,0,-.14*ew);
+  } else if(key==='wink'){
+    to(43,47,.85); to(44,46,.85); mv(46,0,-.08*ew); mv(47,0,-.08*ew); mv(42,0,.04*ew); mv(45,0,.04*ew);
+    for(const i of [22,23,24,25,26]) mv(i,0,.14*ew);
+    mv(54,.04*mW,-.14*mW); mv(64,.03*mW,-.12*mW); mv(53,0,-.06*mW); mv(55,0,-.04*mW);
+  } else if(key==='kiss'){
+    mv(48,.22*mW,0); mv(54,-.22*mW,0); mv(60,.19*mW,0); mv(64,-.19*mW,0);
+    mv(49,.12*mW,-.02*mW); mv(53,-.12*mW,-.02*mW); mv(59,.12*mW,.02*mW); mv(55,-.12*mW,.02*mW);
+    for(const i of [50,51,52]) mv(i,0,-.06*mW); for(const i of [56,57,58]) mv(i,0,.06*mW);
+    for(const i of [61,62,63]) mv(i,0,-.025*mW); for(const i of [65,66,67]) mv(i,0,.025*mW);
+  } else if(key==='wow'){
+    for(let i=17;i<=26;i++) mv(i,0,-.34*ew);
+    for(const i of [37,38,43,44]) mv(i,0,-.18*ew); for(const i of [40,41,46,47]) mv(i,0,.06*ew);
+    mv(48,.07*mW,.04*mW); mv(54,-.07*mW,.04*mW); mv(60,.07*mW,.04*mW); mv(64,-.07*mW,.04*mW);
+    for(const i of [55,59]) mv(i,0,.22*mW); for(const i of [56,57,58]) mv(i,0,.36*mW); for(const i of [65,66,67]) mv(i,0,.34*mW);
+  } else if(key==='grumpy'){
+    mv(21,.1*ew,.24*ew); mv(22,-.1*ew,.24*ew); mv(20,.04*ew,.13*ew); mv(23,-.04*ew,.13*ew); mv(17,0,-.04*ew); mv(26,0,-.04*ew);
+    for(const i of [37,38,43,44]) mv(i,0,.08*ew);
+    mv(48,0,.13*mW); mv(54,0,.13*mW); mv(60,0,.1*mW); mv(64,0,.1*mW); mv(49,0,.04*mW); mv(53,0,.04*mW);
+  } else if(key==='sleepy'){
+    to(37,41,.8); to(38,40,.8); to(43,47,.8); to(44,46,.8);
+    for(let i=17;i<=26;i++) mv(i,0,.06*ew);
+    mv(48,0,.03*mW); mv(54,0,.03*mW);
+  }
+  return D;
+}
+function triangulate(pts){
+  const n=pts.length; let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const q of pts){ x0=Math.min(x0,q[0]); y0=Math.min(y0,q[1]); x1=Math.max(x1,q[0]); y1=Math.max(y1,q[1]); }
+  const dm=Math.max(x1-x0,y1-y0)*20, mx=(x0+x1)/2, my=(y0+y1)/2;
+  const P=pts.concat([[mx-dm,my-dm],[mx+dm,my-dm],[mx,my+dm]]);
+  const circ=t=>{ const [a,b,c]=t.map(i=>P[i]), d=2*(a[0]*(b[1]-c[1])+b[0]*(c[1]-a[1])+c[0]*(a[1]-b[1]))||1e-9;
+    const A=a[0]*a[0]+a[1]*a[1], B=b[0]*b[0]+b[1]*b[1], C=c[0]*c[0]+c[1]*c[1];
+    const ux=(A*(b[1]-c[1])+B*(c[1]-a[1])+C*(a[1]-b[1]))/d, uy=(A*(c[0]-b[0])+B*(a[0]-c[0])+C*(b[0]-a[0]))/d;
+    t.cx=ux; t.cy=uy; t.r2=(a[0]-ux)**2+(a[1]-uy)**2; return t; };
+  let tris=[circ([n,n+1,n+2])];
+  for(let i=0;i<n;i++){
+    const q=P[i], keep=[], edges=new Map();
+    for(const t of tris){
+      if((q[0]-t.cx)**2+(q[1]-t.cy)**2<t.r2){
+        for(const [u,v] of [[t[0],t[1]],[t[1],t[2]],[t[2],t[0]]]){ const k=u<v?u+','+v:v+','+u; edges.set(k,edges.has(k)?null:[u,v]); }
+      } else keep.push(t);
+    }
+    tris=keep; for(const e of edges.values()) if(e) tris.push(circ([e[0],e[1],i]));
+  }
+  return tris.filter(t=>t[0]<n&&t[1]<n&&t[2]<n).map(t=>[t[0],t[1],t[2]]);
+}
+function warpImage(src,L,D){
+  const W=src.width, H=src.height;
+  // a fixed ring around the face keeps the warp local; image corners pin the rest
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const q of L){ x0=Math.min(x0,q[0]); y0=Math.min(y0,q[1]); x1=Math.max(x1,q[0]); y1=Math.max(y1,q[1]); }
+  const cx=(x0+x1)/2, cy=(y0+y1)/2, rx=(x1-x0)*.75, ry=(y1-y0)*.8, ring=[];
+  for(let k=0;k<16;k++){ const t=k/16*Math.PI*2; ring.push([cx+Math.cos(t)*rx,cy+Math.sin(t)*ry]); }
+  ring.push([0,0],[W,0],[0,H],[W,H]);
+  const S=L.map((q,i)=>[q[0]+i*1e-3,q[1]+i*7e-4]).concat(ring), T=D.map((q,i)=>[q[0]+i*1e-3,q[1]+i*7e-4]).concat(ring);
+  const out=document.createElement('canvas'); out.width=W; out.height=H; out.naturalWidth=W; out.naturalHeight=H;
+  const o=out.getContext('2d'); o.drawImage(src,0,0);
+  for(const t of triangulate(S)){
+    if(!t.some(i=>Math.abs(S[i][0]-T[i][0])+Math.abs(S[i][1]-T[i][1])>.05)) continue;
+    const [s0,s1,s2]=t.map(i=>S[i]), [d0,d1,d2]=t.map(i=>T[i]);
+    const den=s0[0]*(s1[1]-s2[1])+s1[0]*(s2[1]-s0[1])+s2[0]*(s0[1]-s1[1]); if(Math.abs(den)<1e-6) continue;
+    const co=k=>[(d0[k]*(s1[1]-s2[1])+d1[k]*(s2[1]-s0[1])+d2[k]*(s0[1]-s1[1]))/den,
+                 (d0[k]*(s2[0]-s1[0])+d1[k]*(s0[0]-s2[0])+d2[k]*(s1[0]-s0[0]))/den,
+                 (d0[k]*(s1[0]*s2[1]-s2[0]*s1[1])+d1[k]*(s2[0]*s0[1]-s0[0]*s2[1])+d2[k]*(s0[0]*s1[1]-s1[0]*s0[1]))/den];
+    const [a,c,e]=co(0), [b,d,f]=co(1);
+    const gx=(d0[0]+d1[0]+d2[0])/3, gy=(d0[1]+d1[1]+d2[1])/3, gr=q=>{ const dx=q[0]-gx, dy=q[1]-gy, l=Math.hypot(dx,dy)||1; return [q[0]+dx/l*.8,q[1]+dy/l*.8]; };
+    o.save(); o.beginPath(); [d0,d1,d2].map(gr).forEach((q,i)=>i?o.lineTo(q[0],q[1]):o.moveTo(q[0],q[1])); o.closePath(); o.clip();
+    o.transform(a,b,c,d,e,f); o.drawImage(src,0,0); o.restore();
+  }
+  return out;
+}
+function setExpr(key){
+  if(!state.srcMarks) return;
+  state.expr=key;
+  const D=exprPoints(state.srcMarks.L,key);
+  state.img=key==='none'?state.src:warpImage(state.src,state.srcMarks.L,D);
+  state.marks=key==='none'?state.srcMarks:marksFromL(D);
+  $('exprRow').querySelectorAll('.thumb').forEach(b=>b.setAttribute('aria-checked',b.dataset.key===key));
+  if(state.preset!=='me') setPreset('me'); else buildFace();
+  wobble(.04);
+}
+
+/* ================= thumbnails ================= */
+function thumbCanvas(btn){ const c=document.createElement('canvas'); c.width=c.height=104; btn.appendChild(c); return c.getContext('2d'); }
+function shadeBall(c,S,hex){
+  const g=c.createRadialGradient(S*.36,S*.3,S*.04,S*.5,S*.55,S*.62);
+  g.addColorStop(0,mixHex(hex,'#FFFFFF',.35)); g.addColorStop(.55,hex); g.addColorStop(1,mixHex(hex,'#000000',.28));
+  c.fillStyle=g; c.beginPath(); c.arc(S/2,S/2+S*.04,S*.4,0,Math.PI*2); c.fill();
+}
+function mixHex(a,b,t){ const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)), A=p(a), B=p(b); return 'rgb('+A.map((v,i)=>Math.round(v+(B[i]-v)*t))+')'; }
+function drawPresetThumb(c,key){
+  const S=104, P=PRESETS[key]; c.clearRect(0,0,S,S);
+  const dot=(x,y,r,col)=>{ c.fillStyle=col; c.beginPath(); c.arc(x*S,y*S,r*S,0,Math.PI*2); c.fill(); };
+  const ear=(x,col,pointy)=>{ c.fillStyle=col; c.beginPath(); if(pointy){ c.moveTo((x-.12)*S,.32*S); c.lineTo(x*S,.06*S); c.lineTo((x+.12)*S,.3*S); c.fill(); } else { c.arc(x*S,.2*S,.1*S,0,Math.PI*2); c.fill(); } };
+  if(key==='kitty'){ ear(.27,'#9C9AA0',1); ear(.73,'#9C9AA0',1); }
+  if(key==='panda'){ ear(.24,'#2A2A2E'); ear(.76,'#2A2A2E'); }
+  if(key==='bear'){ ear(.24,'#8A5C37'); ear(.76,'#8A5C37'); }
+  if(key==='piggy'){ ear(.28,'#F391A8',1); ear(.72,'#F391A8',1); }
+  if(key==='frog'){ dot(.32,.2,.11,P.base); dot(.68,.2,.11,P.base); }
+  if(key==='puppy'){ c.fillStyle='#B98450'; c.beginPath(); c.ellipse(.15*S,.48*S,.09*S,.17*S,.25,0,Math.PI*2); c.ellipse(.85*S,.48*S,.09*S,.17*S,-.25,0,Math.PI*2); c.fill(); }
+  shadeBall(c,S,P.base);
+  if(key==='kitty'){ c.save(); c.beginPath(); c.arc(S/2,S/2+S*.04,S*.4,0,Math.PI*2); c.clip(); c.fillStyle='#A7A5AB'; c.beginPath(); c.ellipse(S/2,S*.12,S*.42,S*.16,0,0,Math.PI*2); c.fill(); c.restore(); }
+  if(key==='puppy'){ dot(.5,.62,.13,'#F7E8CC'); dot(.5,.54,.04,'#2B2320'); }
+  if(key==='bear'){ dot(.5,.62,.11,'#E2C29C'); dot(.5,.56,.03,'#3A2A20'); }
+  if(key==='piggy'){ c.fillStyle='#F391A8'; c.beginPath(); c.ellipse(.5*S,.58*S,.09*S,.065*S,0,0,Math.PI*2); c.fill(); }
+  if(key==='chick'){ c.fillStyle='#FF9437'; c.beginPath(); c.moveTo(.45*S,.53*S); c.lineTo(.55*S,.53*S); c.lineTo(.5*S,.6*S); c.closePath(); c.fill(); }
+  // the face, mapped from texture units onto the thumbnail ball
+  c.save(); c.beginPath(); c.arc(S/2,S/2+S*.04,S*.4,0,Math.PI*2); c.clip();
+  const k=S*1.55; c.translate(S/2-.5*k,S*.54-.5*k);
+  if(key==='frog'){ c.restore(); c.save(); c.translate(S/2-.5*k,S*.54-.5*k); }
+  paintPresetFace(c,key,k); c.restore();
+  if(key==='frog'){ for(const x of [.32,.68]){ dot(x,.2,.065,'#fff'); dot(x,.21,.035,'#17151A'); } }
+}
+function faceCrop(src,L,size){
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const q of L){ x0=Math.min(x0,q[0]); y0=Math.min(y0,q[1]); x1=Math.max(x1,q[0]); y1=Math.max(y1,q[1]); }
+  const side=Math.max(x1-x0,y1-y0)*1.15, cx=(x0+x1)/2, cy=(y0+y1)/2-(y1-y0)*.08;
+  return {sx:cx-side/2, sy:cy-side/2, side};
+}
+function drawPhotoThumb(c,img,L){
+  const S=104, r=faceCrop(img,L); c.clearRect(0,0,S,S);
+  c.save(); c.beginPath(); c.arc(S/2,S/2,S/2,0,Math.PI*2); c.clip();
+  c.drawImage(img,r.sx,r.sy,r.side,r.side,0,0,S,S); c.restore();
+}
+function drawUploadThumb(c){
+  const S=104; c.clearRect(0,0,S,S); c.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim()||'#FDE7DC';
+  c.beginPath(); c.arc(S/2,S/2,S/2,0,Math.PI*2); c.fill();
+  c.strokeStyle='#FF6326'; c.lineWidth=5; c.lineCap='round'; c.beginPath(); c.moveTo(S/2,S*.32); c.lineTo(S/2,S*.68); c.moveTo(S*.32,S/2); c.lineTo(S*.68,S/2); c.stroke();
+}
+function renderPresetRow(){
+  const row=$('presetRow'); row.innerHTML='';
+  for(const key of ['me',...Object.keys(PRESETS)]){
+    const b=document.createElement('button'); b.className='thumb'; b.dataset.key=key; b.setAttribute('role','radio');
+    const name=key==='me'?(state.src?'My photo':'Upload my photo'):PRESETS[key].name;
+    b.setAttribute('aria-label',name); b.title=name; b.setAttribute('aria-checked',state.preset===key&&(key!=='me'||!!state.src));
+    const c=thumbCanvas(b);
+    if(key==='me'){ if(state.src&&state.srcMarks) drawPhotoThumb(c,state.src,state.srcMarks.L); else if(state.src){ c.save(); c.beginPath(); c.arc(52,52,52,0,6.3); c.clip(); const m=Math.min(state.src.width,state.src.height); c.drawImage(state.src,(state.src.width-m)/2,(state.src.height-m)/2,m,m,0,0,104,104); c.restore(); } else drawUploadThumb(c); }
+    else drawPresetThumb(c,key);
+    b.onclick=()=>{ if(key==='me'&&!state.src){ $('photo').click(); return; } setPreset(key); };
+    row.appendChild(b);
+  }
+}
+function buildExprRow(){
+  const row=$('exprRow'); row.innerHTML='';
+  const ok=!!(state.src&&state.srcMarks); $('exprGroup').hidden=!ok||state.preset!=='me';
+  if(!ok) return;
+  // work on a small crop of the face so the previews are quick
+  const r=faceCrop(state.src,state.srcMarks.L), S=160, sm=document.createElement('canvas'); sm.width=sm.height=S;
+  sm.getContext('2d').drawImage(state.src,r.sx,r.sy,r.side,r.side,0,0,S,S);
+  const Ls=state.srcMarks.L.map(q=>[(q[0]-r.sx)/r.side*S,(q[1]-r.sy)/r.side*S]);
+  for(const [key,name] of EXPRS){
+    const b=document.createElement('button'); b.className='thumb'; b.dataset.key=key; b.setAttribute('role','radio');
+    b.setAttribute('aria-label',name); b.title=name; b.setAttribute('aria-checked',state.expr===key);
+    const c=thumbCanvas(b), w=key==='none'?sm:warpImage(sm,Ls,exprPoints(Ls,key));
+    c.save(); c.beginPath(); c.arc(52,52,52,0,6.3); c.clip(); c.drawImage(w,0,0,S,S,0,0,104,104); c.restore();
+    b.onclick=()=>setExpr(key);
+    row.appendChild(b);
+  }
+}
+function setPreset(key){
+  state.preset=key;
+  $('presetRow').querySelectorAll('.thumb').forEach(b=>b.setAttribute('aria-checked',b.dataset.key===key));
+  const me=key==='me';
+  $('swatches').hidden=!me; $('styleGroup').hidden=!me; $('exprGroup').hidden=!me||!state.srcMarks;
+  if(!state.hairTouched) setHair(me?M().hair:'none');
+  applyMaterial(); buildFace(); wobble(.05);
+  renderPresetRow();
+}
+
+/* ================= dock ================= */
+const pop=$('pop');
+function closePop(){ pop.hidden=true; pop.dataset.tab=''; document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected','false')); }
+function openTab(name){
+  if(!pop.hidden && pop.dataset.tab===name){ closePop(); return; }
+  pop.dataset.tab=name; pop.hidden=false;
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.tab===name));
+  pop.querySelectorAll('.panel').forEach(p=>p.hidden=p.dataset.panel!==name);
+  const t=document.querySelector(`.tab[data-tab="${name}"]`).getBoundingClientRect(), pr=pop.getBoundingClientRect();
+  pop.style.setProperty('--caret',Math.max(24,Math.min(pr.width-24,t.left+t.width/2-pr.left))+'px');
+  $('hint').hidden=true;
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>openTab(t.dataset.tab)));
+stage.addEventListener('pointerdown',()=>{ if(!pop.hidden) closePop(); },true);
+window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!pop.hidden&&$('sheet').hidden) closePop(); });
+window.addEventListener('resize',()=>{ if(!pop.hidden){ const n=pop.dataset.tab; pop.hidden=true; openTab(n); } });
+
+/* ---------------- boot ---------------- */
+setStyle(state.style); buildSwatches(); renderPresetRow(); applyMaterial(); buildFace(); setHair(state.hair); layout();
+rotY=-.55; rotV=.03;    // turns to face you on arrival, so it reads as 3D
+body.y=.9;              // and drops in
+frame();
+})();
+</script>
+
+</body>
+</html>
