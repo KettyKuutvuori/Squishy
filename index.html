@@ -352,6 +352,8 @@ faceTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 const aoCol = new Float32Array(NV*3).fill(1);
 const comp = new Float32Array(NV);                       // how squeezed each bit of skin is (0..1)
 geo.setAttribute('aComp', new THREE.BufferAttribute(comp,1));
+const hairShade = new Float32Array(NV);                  // how much hair sits over each bit of skin (0..1)
+geo.setAttribute('aHair', new THREE.BufferAttribute(hairShade,1));
 const bumpU = { base:{value:1}, wr:{value:0}, grain:{value:null}, grainScale:{value:0} };
 geo.setAttribute('color', new THREE.BufferAttribute(aoCol,3));
 const mat = new THREE.MeshPhysicalMaterial({ map:faceTex, color:0xffffff, vertexColors:true });
@@ -359,10 +361,10 @@ mat.onBeforeCompile = sh => {
   sh.uniforms.uGrain=bumpU.grain; sh.uniforms.uGrainScale=bumpU.grainScale;
   sh.uniforms.uBumpBase=bumpU.base; sh.uniforms.uBumpWr=bumpU.wr;
   sh.vertexShader = sh.vertexShader
-    .replace('#include <common>','#include <common>\nattribute float aFront;\nvarying float vFront;\nattribute float aComp;\nvarying float vComp;')
-    .replace('#include <uv_vertex>','#include <uv_vertex>\nvFront = aFront; vComp = aComp;');
+    .replace('#include <common>','#include <common>\nattribute float aFront;\nvarying float vFront;\nattribute float aComp;\nvarying float vComp;\nattribute float aHair;\nvarying float vHair;')
+    .replace('#include <uv_vertex>','#include <uv_vertex>\nvFront = aFront; vComp = aComp; vHair = aHair;');
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>','#include <common>\nvarying float vFront;\nvarying float vComp;\nuniform float uBumpBase;\nuniform float uBumpWr;\nuniform sampler2D uGrain;\nuniform float uGrainScale;')
+    .replace('#include <common>','#include <common>\nvarying float vFront;\nvarying float vComp;\nvarying float vHair;\nuniform float uBumpBase;\nuniform float uBumpWr;\nuniform sampler2D uGrain;\nuniform float uGrainScale;')
     // creases appear only where the skin is compressed: scale the bump per pixel
     .replace('#include <bumpmap_pars_fragment>','#define dHdxy_fwd dHdxy_fwd_raw\n#include <bumpmap_pars_fragment>\n#undef dHdxy_fwd\nvec2 grainGradient(){ vec2 dx=dFdx(vUv), dy=dFdy(vUv); float h=texture2D(uGrain,vUv).r; return uGrainScale*vec2(texture2D(uGrain,vUv+dx).r-h,texture2D(uGrain,vUv+dy).r-h); }\n#define dHdxy_fwd() (dHdxy_fwd_raw()*(uBumpBase+uBumpWr*vComp)+grainGradient())')
     .replace('#include <color_fragment>',`#ifdef USE_COLOR
@@ -372,7 +374,8 @@ mat.onBeforeCompile = sh => {
       vec4 texelColor = texture2D( map, vUv );
       texelColor = mapTexelToLinear( texelColor );
       diffuseColor.rgb = mix( diffuseColor.rgb, texelColor.rgb, texelColor.a * vFront );
-    #endif`);
+    #endif
+    diffuseColor.rgb *= 1.0 - .42*vHair;`);
 };
 const ball = new THREE.Mesh(geo, mat);
 ball.castShadow = true;
@@ -719,59 +722,36 @@ function buildFace(){
 }
 
 /* ---------------- hair (3D ribbons) ---------------- */
-let HAIR=[], SEG=6, hPos=null, hNor=null;
-/* Yarn strand texture (across = width, down = along the strand).
-   A solid core of two plies twisting round each other, with loose fibres sticking out of the
-   edges. The fibres are cut out by alphaTest, so every strand has a fuzzy, broken silhouette. */
-const yarnCv=document.createElement('canvas'); yarnCv.width=128; yarnCv.height=512;
-{ const x=yarnCv.getContext('2d'), W=128, H=512, c0=30, c1=98, cw=c1-c0;
-  let sd=17; const r=()=>((sd=(sd*16807)%2147483647)/2147483647);
-  x.clearRect(0,0,W,H);
-  // core, rounded: lighter in the middle, darker at the edges
-  const core=x.createLinearGradient(c0,0,c1,0);
-  core.addColorStop(0,'#7A7A7A'); core.addColorStop(.3,'#E2E2E2'); core.addColorStop(.55,'#EFEFEF'); core.addColorStop(1,'#6E6E6E');
-  x.fillStyle=core; x.fillRect(c0,0,cw,H);
-  // two plies: S-twist grooves running diagonally, each ply a little bulge with a highlight
-  const pitch=64;
-  for(let y=-pitch*2;y<H+pitch*2;y+=pitch/2){
-    x.save(); x.beginPath(); x.rect(c0,0,cw,H); x.clip();
-    x.strokeStyle='rgba(20,20,20,.7)'; x.lineWidth=7;
-    x.beginPath(); x.moveTo(c0-4,y); x.bezierCurveTo(c0+cw*.3,y+10,c0+cw*.7,y+26,c1+4,y+34); x.stroke();
-    x.strokeStyle='rgba(255,255,255,.7)'; x.lineWidth=4;
-    x.beginPath(); x.moveTo(c0-4,y+11); x.bezierCurveTo(c0+cw*.3,y+21,c0+cw*.7,y+37,c1+4,y+45); x.stroke();
-    x.restore();
+let HAIR=[], SEG=6, hPos=null, hNor=null; const RAD=7;
+// Seamless twist pattern that wraps around a round strand: two plies spiralling along it.
+const plyCv=document.createElement('canvas'); plyCv.width=64; plyCv.height=64;
+{ const x=plyCv.getContext('2d'), S=64, img=x.createImageData(S,S);
+  for(let y=0;y<S;y++) for(let u=0;u<S;u++){
+    // helix: phase runs around (u) and along (y) the strand; two plies per turn
+    const ph=(u/S*2 + y/S)*Math.PI*2, ply=.5+.5*Math.cos(ph), groove=Math.pow(ply,.35);
+    const fib=.5+.5*Math.sin(ph*9+Math.sin(y*.9)*1.3);                // fine fibres running with the twist
+    const v=Math.round(255*(.2+.62*groove+.18*fib*groove)), i=(y*S+u)*4;
+    img.data[i]=img.data[i+1]=img.data[i+2]=v; img.data[i+3]=255;
   }
-  // fine fibres running with the twist across the core
-  for(let i=0;i<1400;i++){
-    const px=c0+r()*cw, py=r()*H, l=6+r()*14, v=r()<.55?255:30;
-    x.strokeStyle=`rgba(${v},${v},${v},${.1+r()*.15})`; x.lineWidth=.7+r()*.6;
-    x.beginPath(); x.moveTo(px,py); x.lineTo(px+l*.55,py+l*.85); x.stroke();
-  }
-  // loose fibres: short wisps leaving the core edges, the fuzz you see around real yarn
-  for(let i=0;i<520;i++){
-    const left=r()<.5, ex=left?c0+2:c1-2, py=r()*H, out=6+r()*24, dir=left?-1:1, bend=(r()-.5)*16;
-    const v=200+r()*55|0;
-    x.strokeStyle=`rgba(${v},${v},${v},1)`; x.lineWidth=.9+r()*.8;
-    x.beginPath(); x.moveTo(ex,py); x.quadraticCurveTo(ex+dir*out*.5,py+bend*.5,ex+dir*out,py+bend); x.stroke();
-  }
-  // the texture wraps along the strand: copy the ends so the seam doesn't show
-  const top=x.getImageData(0,0,W,24), bot=x.getImageData(0,H-24,W,24);
-  x.globalAlpha=.5; x.putImageData(bot,0,0); x.globalAlpha=1;
-}
-const yarnTex=new THREE.CanvasTexture(yarnCv); yarnTex.wrapT=THREE.RepeatWrapping; yarnTex.encoding=THREE.sRGBEncoding;
-yarnTex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
-const hairMat = new THREE.MeshPhysicalMaterial({vertexColors:true, map:yarnTex, alphaTest:.45, roughness:1, envMapIntensity:.35, side:THREE.DoubleSide});
-if('sheen' in hairMat){ try{ hairMat.sheen = new THREE.Color(.22,.22,.22); }catch(_){} }   // soft velvety rim, like wool fibres
+  x.putImageData(img,0,0); }
+const plyTex=new THREE.CanvasTexture(plyCv); plyTex.wrapS=plyTex.wrapT=THREE.RepeatWrapping;
+plyTex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+const hairMat = new THREE.MeshPhysicalMaterial({vertexColors:true, bumpMap:plyTex, bumpScale:.0035, roughness:.86, envMapIntensity:.55});
+if('sheen' in hairMat){ try{ hairMat.sheen = new THREE.Color(.28,.28,.28); }catch(_){} }   // soft wool rim light
+// the ply grooves also darken a little, the way light catches twisted yarn
+hairMat.onBeforeCompile = sh => {
+  sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>',
+    '#include <color_fragment>\n#ifdef USE_BUMPMAP\n  diffuseColor.rgb *= .62 + .48 * texture2D( bumpMap, vUv ).r;\n#endif');
+};
 const hairMesh = new THREE.Mesh(new THREE.BufferGeometry(), hairMat);
-// shadows follow the fuzzy cut-out instead of the full ribbon
-hairMesh.customDepthMaterial = new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking, map:yarnTex, alphaTest:.45});
+hairMesh.receiveShadow = true;                                     // strands shade each other
 hairMesh.castShadow = true; hairMesh.frustumCulled = false;
 group.add(hairMesh);
 
 function buildHair(){
   const st=state.hair; HAIR=[];
   hairMesh.visible = st!=='none';
-  if(st==='none') return;
+  if(st==='none'){ shadeUnderHair(); return; }
   let seed=11; const r=()=>((seed=(seed*16807)%2147483647)/2147483647);
   const pick=fn=>{ const c=[]; for(let i=0;i<NV;i++) if(fn(base[i*3],base[i*3+1],base[i*3+2],baseN[i*3+1])) c.push(i); return c; };
   const faceZone=(x,y,z)=>z>.45&&y<.5;       // keep the face clear
@@ -787,19 +767,29 @@ function buildHair(){
   const baseC=new THREE.Color(HAIR_COLORS[state.hairColor].base);
   for(let k=0;k<count;k++){
     const h=make(); h.vi=cand[(r()*cand.length)|0]; h.tip=null; h.tv=[0,0,0]; h.ctrl=null; h.cv=[0,0,0];
-    h.w*=1.9;                                                    // the fuzz is cut from the ribbon, so the ribbon is wider than the core
+    h.w*=1.25;
     const kv=[r()-.5,r()-.5,r()-.5], kl=Math.hypot(...kv)||1;
     h.kink={v:kv.map(q=>q/kl), f:5+r()*6, ph:r()*6.28, amp:h.w*(.25+r()*.35)};
     h.stiff=.75+r()*.5;
     h.col=baseC.clone().offsetHSL((r()-.5)*.015,.05,(r()-.55)*.16).convertSRGBToLinear();
     HAIR.push(h);
   }
-  const HV=count*(SEG+1)*2, col=new Float32Array(HV*3), uv=new Float32Array(HV*2), idx=[];
+  // each strand is a tube: SEG+1 rings of RAD vertices (the ring is closed with a seam copy)
+  const RING=RAD+1, HV=count*(SEG+1)*RING, col=new Float32Array(HV*3), uv=new Float32Array(HV*2), idx=[];
   hPos=new Float32Array(HV*3); hNor=new Float32Array(HV*3);
-  HAIR.forEach((h,k)=>{ const tw=r(); for(let j=0;j<=SEG;j++){ const a=(k*(SEG+1)+j)*2, vv=tw+j/SEG*h.len/(h.w*2.4);
-    uv[a*2]=0; uv[a*2+1]=vv; uv[(a+1)*2]=1; uv[(a+1)*2+1]=vv;
-    for(const v of [a,a+1]){ col[v*3]=h.col.r; col[v*3+1]=h.col.g; col[v*3+2]=h.col.b; }
-    if(j<SEG) idx.push(a,a+1,a+2,a+1,a+3,a+2); } });
+  HAIR.forEach((h,k)=>{
+    const tw=r(), turns=h.len/(h.w*2.2);
+    for(let j=0;j<=SEG;j++){
+      const t=j/SEG, rootAO=.42+.58*Math.min(1,t/.32);               // darker where strands crowd at the root
+      for(let q=0;q<RING;q++){
+        const v=(k*(SEG+1)+j)*RING+q;
+        uv[v*2]=q/RAD; uv[v*2+1]=tw+t*turns;
+        col[v*3]=h.col.r*rootAO; col[v*3+1]=h.col.g*rootAO; col[v*3+2]=h.col.b*rootAO;
+        if(j<SEG && q<RAD){ const a=v, b2=v+1, c=v+RING, d=v+RING+1; idx.push(a,c,b2, b2,c,d); }
+      }
+    }
+    // cap the tip so the strand end looks cut, not hollow
+  });
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.BufferAttribute(hPos,3));
   g.setAttribute('normal',new THREE.BufferAttribute(hNor,3));
@@ -807,9 +797,21 @@ function buildHair(){
   g.setAttribute('uv',new THREE.BufferAttribute(uv,2));
   g.setIndex(idx);
   hairMesh.geometry.dispose(); hairMesh.geometry=g;
+  shadeUnderHair();
+}
+function shadeUnderHair(){
+  hairShade.fill(0);
+  if(state.hair!=='none' && HAIR.length){
+    const roots=HAIR.map(h=>[base[h.vi*3],base[h.vi*3+1],base[h.vi*3+2]]);
+    for(let i=0;i<NV;i++){
+      const x=base[i*3], y=base[i*3+1], z=base[i*3+2]; let acc=0;
+      for(const q of roots){ const d2=(x-q[0])**2+(y-q[1])**2+(z-q[2])**2; if(d2<.06) acc+=Math.exp(-d2/.012); }
+      hairShade[i]=Math.min(1,acc*.09);
+    }
+  }
+  geo.attributes.aHair.needsUpdate=true;
 }
 
-const camLocal = new THREE.Vector3();
 let hairRotation=0;
 function updateHair(acc){
   const turn=hairRotation-rotY; hairRotation=rotY;
@@ -817,7 +819,6 @@ function updateHair(acc){
   const rotate=v=>{ const x=v[0]; v[0]=ct*x+st*v[2]; v[2]=-st*x+ct*v[2]; };
   if(!hairMesh.visible||!HAIR.length) return;
   const N=geo.attributes.normal.array;
-  camLocal.copy(camera.position); group.worldToLocal(camLocal);
   HAIR.forEach((s,k)=>{
     const i=s.vi*3, r=[pos[i],pos[i+1],pos[i+2]];
     let d=[N[i]+s.tilt[0],N[i+1]+s.tilt[1],N[i+2]+s.tilt[2]]; const dl=Math.hypot(...d)||1; d=d.map(v=>v/dl);
@@ -862,14 +863,15 @@ function updateHair(acc){
       }
       if(s.kink){ const kn=Math.sin(s.kink.ph+t*s.kink.f)*s.kink.amp*Math.min(1,t*3); for(let a=0;a<3;a++) p[a]+=s.kink.v[a]*kn; }
       p[1]=Math.max(minY-body.y+.008,p[1]);
-      const vw=[camLocal.x-p[0],camLocal.y-p[1],camLocal.z-p[2]];
-      let sd=[tg[1]*vw[2]-tg[2]*vw[1], tg[2]*vw[0]-tg[0]*vw[2], tg[0]*vw[1]-tg[1]*vw[0]];
-      const sl=Math.hypot(...sd)||1, w=s.w*(1-.1*t)/2; sd=sd.map(v=>v/sl*w);
-      const vl=Math.hypot(...vw)||1, a=(k*(SEG+1)+j)*2;
-      for(let q=0;q<3;q++){
-        hPos[a*3+q]=p[q]-sd[q]; hPos[(a+1)*3+q]=p[q]+sd[q];
-        const f=vw[q]/vl*.55+d[q]*.35, side=sd[q]/w*.85;
-        hNor[a*3+q]=f-side; hNor[(a+1)*3+q]=f+side;
+      // a frame around the strand that turns smoothly with it (parallel transport)
+      const tl=Math.hypot(...tg)||1, T=tg.map(v=>v/tl);
+      if(j===0){ let n=[T[1]*0-T[2]*1, T[2]*0-T[0]*0, T[0]*1-T[1]*0]; if(Math.hypot(...n)<.1) n=[0,T[2],-T[1]]; const nl=Math.hypot(...n); s._n=n.map(v=>v/nl); }
+      else { const n=s._n, dt=n[0]*T[0]+n[1]*T[1]+n[2]*T[2]; let m2=[n[0]-dt*T[0],n[1]-dt*T[1],n[2]-dt*T[2]]; const ml=Math.hypot(...m2)||1; s._n=m2.map(v=>v/ml); }
+      const N1=s._n, N2=[T[1]*N1[2]-T[2]*N1[1], T[2]*N1[0]-T[0]*N1[2], T[0]*N1[1]-T[1]*N1[0]];
+      const rad=s.w*.5*(1-.12*t)*(j===SEG?.55:1);                     // rounded, slightly frayed tip
+      for(let q=0;q<=RAD;q++){
+        const ang=q/RAD*Math.PI*2, ca=Math.cos(ang), sa=Math.sin(ang), v=((k*(SEG+1)+j)*(RAD+1)+q)*3;
+        for(let a=0;a<3;a++){ const nn=N1[a]*ca+N2[a]*sa; hNor[v+a]=nn; hPos[v+a]=p[a]+nn*rad; }
       }
     }
   });
