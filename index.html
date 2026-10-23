@@ -1540,8 +1540,8 @@ function applyPreset(f){
   if(REFINED_ANIMALS.has(state.preset)){ applyRefinedAnimal(f); return; }
   const P=PRESETS[state.preset], bc=lin(P.base), tmp=new THREE.Color();
   const eyeBumps=P.toy&&!['frog','kitty','puppy','chick'].includes(state.preset)?[[-.216,.144],[.216,.144]].map(([x,y])=>[V3(x,y/1.12,Math.sqrt(1-x*x-y*y)),.09,.03,'ball']):[];
-  // a crying or surprised puppy has no mouth, so no tongue out either
-  const ownBumps=(P.bumps||[]).filter(b=>!(state.preset==='puppy'&&(state.mood==='crying'||state.mood==='surprised')&&b[4]==='#EA9384'));
+  // only a happy puppy has a mouth, so only a happy puppy has its tongue out
+  const ownBumps=(P.bumps||[]).filter(b=>!(state.preset==='puppy'&&(state.mood||'happy')!=='happy'&&b[4]==='#EA9384'));
   const bumps=[...ownBumps,...eyeBumps].map(b=>({c:b[0],r:b[1],h:b[2],prof:PROFILE[b[3]],col:b[4]?lin(b[4]):null,aspect:b[5],verts:[]}));
   bumpU.base.value=P.toy?0:(M().wrBase||0);
   if(P.round) bumpU.grainScale.value=Math.min(bumpU.grainScale.value,.005);
@@ -1866,7 +1866,7 @@ function paintPresetFace(c,key,T){
     eye(.41,.44,.025);eye(.59,.44,.025);
     if(happy){ E(.5,.59,.023,.034,'#EA9384');line([[.5,.568],[.5,.602]],.0025,'#C67267'); }
     E(.5,.509,.033,.022,'#513726');E(.489,.5,.008,.004,'rgba(255,231,208,.3)');
-    const noMouth=mood==='crying'||mood==='surprised';              // these show through the eyes alone
+    const noMouth=!happy;                                           // only Happy has a mouth; the rest show through the eyes and brows
     if(!noMouth) line([[.5,.528],[.5,.545]],.006,'#3C291E');
     if(happy){ arc(.474,.54,.026,.05*Math.PI,.93*Math.PI,.006,'#3C291E');arc(.526,.54,.026,.07*Math.PI,.95*Math.PI,.006,'#3C291E'); }
     else if(!noMouth) mouth(.5,.56,.034,'#3C291E');
