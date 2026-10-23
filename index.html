@@ -1749,6 +1749,7 @@ function applyRefinedAnimal(f){
       if(mood==='crying'){ const [x,y]=printPoint([side*.6,.56,.9]); moodTear(f,x,y,unitPx*.28,unitPx*.05); }
     }
     if(happy) faceLine([[-.35,.015,.91],[-.25,-.10,.958],[0,-.16,.977],[.25,-.10,.958],[.35,.015,.91]],.018,'#25301C');
+    else if(mood==='crying'){ const [x,y]=printPoint([0,-.09,.97]); cryMouth(f,x,y,.24*unitPx,'#25301C'); }
     else mouthAt([0,-.09,.97],.24,'#25301C');
   }else{
     for(const side of [-1,1]){
@@ -1817,7 +1818,14 @@ function moodMouth(c,x,y,hw,mood,ink){
   const lw=Math.max(2,hw*.2);
   if(mood==='surprised'){ O(x,y+hw*.2,hw*.42,hw*.55,ink); O(x,y+hw*.45,hw*.26,hw*.2,'#E77F86'); }
   else if(mood==='angry'){ c.strokeStyle=ink; c.lineWidth=lw; c.lineCap='round'; c.beginPath(); c.arc(x,y+hw*.95,hw*.75,1.22*Math.PI,1.78*Math.PI); c.stroke(); }
-  // crying: no mouth, just the shut eyes and tears
+  // crying: no mouth, just the shut eyes and tears (the frog keeps one, see cryMouth)
+}
+// the sad, wobbly crying mouth, used only by the frog
+function cryMouth(c,x,y,hw,ink){
+  c.fillStyle=ink; c.beginPath(); c.moveTo(x-hw*.7,y+hw*.45);
+  c.quadraticCurveTo(x-hw*.35,y-hw*.05,x,y+hw*.1); c.quadraticCurveTo(x+hw*.35,y-hw*.05,x+hw*.7,y+hw*.45);   // wobbly top lip
+  c.quadraticCurveTo(x,y+hw*1.05,x-hw*.7,y+hw*.45); c.fill();
+  c.fillStyle='#E77F86'; c.beginPath(); c.ellipse(x,y+hw*.62,hw*.3,hw*.16,0,0,Math.PI*2); c.fill();
 }
 
 // faces, drawn in face-texture units (eyes sit near y .45, mouth near .55)
