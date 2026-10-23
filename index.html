@@ -1256,12 +1256,24 @@ function layout(){
   camera.aspect=asp;
   const dist=Math.max(7.6, 6.4/asp);
   camera.position.set(0, dist*.16, dist);
-  camera.lookAt(0,asp<.8?-.3:.28,0);   // keep the ball clear of the dock
+  camera.lookAt(0,.28,0);
+  // Centre the ball in the free space: below the title (on tall screens, where the
+  // title sits above the ball) and above the dock. Done by sliding the view, so the
+  // perspective stays the same everywhere.
+  camera.clearViewOffset(); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+  const hd=document.querySelector('header'), dk=document.querySelector('.dock');
+  const top=(asp<1&&hd)?hd.getBoundingClientRect().bottom-r.top:h*.04;
+  const bottom=dk?dk.getBoundingClientRect().top-r.top:h;
+  // the ball plus its hair tuft and shadow reads as centred a little above its own middle
+  const p=new THREE.Vector3(0,(minY+maxY)/2+.12,0).project(camera);
+  const shift=(1-p.y)/2*h-(top+bottom)/2;
+  camera.setViewOffset(w,h,0,shift,w,h);
   camera.updateProjectionMatrix();
   const halfH=dist*Math.tan(THREE.MathUtils.degToRad(14));
   xLim=Math.max(.2, halfH*asp-1.15); yLim=Math.max(.3, halfH-1.25);
 }
-new ResizeObserver(layout).observe(stage);
+{ const ro=new ResizeObserver(layout); ro.observe(stage);
+  ['header','.dock'].forEach(s=>{ const e=document.querySelector(s); if(e) ro.observe(e); }); }
 
 /* ---------------- controls ---------------- */
 function swatchRow(wrap,list,cur,small,onPick){
