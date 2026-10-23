@@ -1647,18 +1647,24 @@ function addAnimalPart(geometry,color,gloss=false){
     clearcoat:gloss?.35:0,envMapIntensity:gloss?.7:.45,
     bumpMap:gloss?null:grainTex,bumpScale:gloss?0:.004});
   const mesh=new THREE.Mesh(geometry,material);mesh.castShadow=true;mesh.frustumCulled=false;
-  const coords=geometry.attributes.position.array, original=coords.slice(), bindings=[];
-  // Blend nearby surface displacements; details stay attached during squeezes and clay edits.
-  for(let v=0;v<coords.length;v+=3){
-    const best=[];
-    for(let i=0;i<NV;i+=24){
-      const j=i*3,d=(rest[j]-coords[v])**2+(rest[j+1]-coords[v+1])**2+(rest[j+2]-coords[v+2])**2;
-      if(best.length<4||d<best[best.length-1].d){best.push({j,d});best.sort((a,b)=>a.d-b.d);if(best.length>4)best.pop();}
-    }
-    const sum=best.reduce((n,b)=>n+1/(b.d+.015),0);
-    bindings.push(best.map(b=>({j:b.j,w:1/(b.d+.015)/sum,p:[rest[b.j],rest[b.j+1],rest[b.j+2]]})));
+  /* The part moves as one rigid piece, so pulling the clay can never tear it apart: it follows
+     the patch of ball it sits on (average shift) and tilts with that patch's surface. */
+  geometry.computeBoundingSphere();
+  const c=geometry.boundingSphere.center, R=Math.max(.12,geometry.boundingSphere.radius);
+  // where it touches: the ball vertex nearest the part's centre, and the patch around it
+  let anchor=0, bd=1e9;
+  for(let i=0;i<NV;i++){ const d=(rest[i*3]-c.x)**2+(rest[i*3+1]-c.y)**2+(rest[i*3+2]-c.z)**2; if(d<bd){bd=d;anchor=i;} }
+  const A=[rest[anchor*3],rest[anchor*3+1],rest[anchor*3+2]], patch=[], s2=2*(R*.8)**2;
+  for(let i=0;i<NV;i++){
+    const d=(rest[i*3]-A[0])**2+(rest[i*3+1]-A[1])**2+(rest[i*3+2]-A[2])**2;
+    if(d<s2*3) patch.push({j:i*3, w:Math.exp(-d/s2), p:[rest[i*3],rest[i*3+1],rest[i*3+2]]});
   }
-  mesh.userData={original,bindings};animalDetails.add(mesh);return mesh;
+  const sw=patch.reduce((n,q)=>n+q.w,0); patch.forEach(q=>q.w/=sw);
+  const nrm=geo.attributes.normal.array, n0=new THREE.Vector3();
+  for(const q of patch) n0.x+=nrm[q.j]*q.w, n0.y+=nrm[q.j+1]*q.w, n0.z+=nrm[q.j+2]*q.w;
+  n0.normalize();
+  mesh.userData={anchor:new THREE.Vector3(...A), patch, n0};
+  animalDetails.add(mesh); return mesh;
 }
 function animalOval(center,size,color,gloss=false,tilt=0){
   const g=new THREE.SphereGeometry(1,28,18);g.scale(...size);g.rotateZ(tilt);g.translate(...center);addAnimalPart(g,color,gloss);
@@ -1707,13 +1713,22 @@ function animalLine(points,width,color){
   addAnimalPart(new THREE.TubeGeometry(curve,24,width,8,false),color,true);
 }
 function updateAnimalDetails(){
+  const nrm=geo.attributes.normal.array, n=new THREE.Vector3(), dlt=new THREE.Vector3(), q=new THREE.Quaternion(), tmp=new THREE.Vector3();
   for(const mesh of animalDetails.children){
-    const {original,bindings}=mesh.userData,p=mesh.geometry.attributes.position;
-    for(let v=0;v<bindings.length;v++) for(let a=0;a<3;a++){
-      let delta=0;for(const b of bindings[v])delta+=(pos[b.j+a]-b.p[a])*b.w;
-      p.array[v*3+a]=original[v*3+a]+delta;
+    const {anchor,patch,n0}=mesh.userData;
+    dlt.set(0,0,0); n.set(0,0,0);
+    for(const b of patch){
+      dlt.x+=(pos[b.j]-b.p[0])*b.w; dlt.y+=(pos[b.j+1]-b.p[1])*b.w; dlt.z+=(pos[b.j+2]-b.p[2])*b.w;
+      n.x+=nrm[b.j]*b.w; n.y+=nrm[b.j+1]*b.w; n.z+=nrm[b.j+2]*b.w;
     }
-    p.needsUpdate=true;mesh.geometry.computeVertexNormals();
+    n.normalize();
+    // tilt with the surface (limited, so a hard pull bends it believably rather than flipping it)
+    q.setFromUnitVectors(n0,n); const ang=2*Math.acos(Math.min(1,Math.abs(q.w)));
+    if(ang>.9) q.slerp(new THREE.Quaternion(), 1-.9/ang);
+    // rotate about the touching point, then shift with the patch
+    mesh.quaternion.copy(q);
+    tmp.copy(anchor).applyQuaternion(q);
+    mesh.position.copy(anchor).sub(tmp).add(dlt);
   }
 }
 function applyRefinedAnimal(f){
