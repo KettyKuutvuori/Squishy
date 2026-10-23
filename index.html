@@ -1714,12 +1714,14 @@ function applyRefinedAnimal(f){
     }
     return [( .5+x/(1.05*PW))*TEX,(.5-(lo+hi)/2/PW)*TEX];
   };
-  const noseRelief=(point,size,height)=>{
-    const center=printPoint(point),rx=size[0]*.72/(1.05*PW),ry=size[1]*.72/(.86*PW);
+  // a raised bump; with a colour it's a moulded nose coloured in the rubber itself (no print on top)
+  const noseRelief=(point,size,height,color)=>{
+    const center=printPoint(point),rx=size[0]*.72/(1.05*PW),ry=size[1]*.72/(.86*PW), col=color?lin(color):null;
     for(let i=0;i<NV;i++){
       if(front[i]<.5)continue;
       const dx=(uvArr[i*2]-center[0]/TEX)/rx,dy=(1-uvArr[i*2+1]-center[1]/TEX)/ry;
       const t=Math.hypot(dx,dy);
+      if(col && t<1.06){ const e=Math.min(1,(1.06-t)/.08); for(let a=0;a<3;a++) aoCol[i*3+a]+=([col.r,col.g,col.b][a]-aoCol[i*3+a])*e; }
       if(t>=1)continue;
       const depth=height*PROFILE.ball(t);
       for(let a=0;a<3;a++)rest[i*3+a]+=baseN[i*3+a]*depth;
@@ -1774,8 +1776,13 @@ function applyRefinedAnimal(f){
       if(!happy) mouthAt([0,-.22,.95],.16,'#8E4A44');
     }else{
       if(key==='bear')faceOval([0,-.10,.936],[.29,.25,.09],cream);
-      noseRelief([0,.025,1],[.10,.073,.055],.035);
-      faceOval([0,.025,key==='bear'?1.032:.972],[.10,.073,.055],key==='bear'?'#4B2D1C':dark,true);
+      if(key==='bear'){
+        noseRelief([0,.025,1],[.13,.095,.07],.06,'#4B2D1C');                  // a raised moulded nose, like the puppy's
+        // let the brown rubber show through: clear the muzzle print where the nose bump is
+        const [x,y]=printPoint([0,.025,1]), rx=.13*.72/(1.05*PW)*TEX*1.04, ry=.095*.72/(.86*PW)*TEX*1.04;
+        f.save(); f.globalCompositeOperation='destination-out'; f.beginPath(); f.ellipse(x,y,rx,ry,0,0,Math.PI*2); f.fill(); f.restore();
+      }
+      else { noseRelief([0,.025,1],[.10,.073,.055],.035); faceOval([0,.025,.972],[.10,.073,.055],dark,true); }
       const z=key==='bear'?1.027:.963;
       if(mood!=='crying') faceLine([[0,-.025,z],[0,-.105,z]],.013,dark);   // no mouth when crying, so no line down to it
       if(happy){
@@ -1873,7 +1880,7 @@ function paintPresetFace(c,key,T){
   else if(key==='puppy'){
     eye(.41,.44,.025);eye(.59,.44,.025);
     if(happy){ E(.5,.59,.023,.034,'#EA9384');line([[.5,.568],[.5,.602]],.0025,'#C67267'); }
-    E(.5,.509,.033,.022,'#513726');E(.489,.5,.008,.004,'rgba(255,231,208,.3)');
+    // the nose is the raised brown bump itself: no printed nose on top of it
     const noMouth=!happy;                                           // only Happy has a mouth; the rest show through the eyes and brows
     if(!noMouth) line([[.5,.528],[.5,.545]],.006,'#3C291E');
     if(happy){ arc(.474,.54,.026,.05*Math.PI,.93*Math.PI,.006,'#3C291E');arc(.526,.54,.026,.07*Math.PI,.95*Math.PI,.006,'#3C291E'); }
