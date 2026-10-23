@@ -1774,7 +1774,7 @@ function applyRefinedAnimal(f){
       noseRelief([0,.025,1],[.10,.073,.055],.035);
       faceOval([0,.025,key==='bear'?1.032:.972],[.10,.073,.055],key==='bear'?'#4B2D1C':dark,true);
       const z=key==='bear'?1.027:.963;
-      faceLine([[0,-.025,z],[0,-.105,z]],.013,dark);
+      if(mood!=='crying') faceLine([[0,-.025,z],[0,-.105,z]],.013,dark);   // no mouth when crying, so no line down to it
       if(happy){
         faceLine([[0,-.105,z],[-.055,-.16,z],[-.12,-.145,z],[-.145,-.11,z]],.013,dark);
         faceLine([[0,-.105,z],[.055,-.16,z],[.12,-.145,z],[.145,-.11,z]],.013,dark);
@@ -1853,7 +1853,7 @@ function paintPresetFace(c,key,T){
   else if(key==='kitty'){
     eye(.41,.44,.023);eye(.59,.44,.023);
     c.fillStyle='#E99D91';c.beginPath();c.moveTo(.479*T,.5*T);c.quadraticCurveTo(.5*T,.491*T,.521*T,.5*T);c.quadraticCurveTo(.514*T,.515*T,.5*T,.523*T);c.quadraticCurveTo(.486*T,.515*T,.479*T,.5*T);c.fill();
-    line([[.5,.522],[.5,.536]],.006,'#342B25');
+    if(mood!=='crying') line([[.5,.522],[.5,.536]],.006,'#342B25');
     if(happy){ arc(.478,.535,.022,.05*Math.PI,.93*Math.PI,.006,'#342B25');arc(.522,.535,.022,.07*Math.PI,.95*Math.PI,.006,'#342B25'); }
     else mouth(.5,.548,.03,'#342B25');
     for(const sx of [-1,1]){
@@ -1865,7 +1865,7 @@ function paintPresetFace(c,key,T){
     eye(.41,.44,.025);eye(.59,.44,.025);
     if(happy){ E(.5,.59,.023,.034,'#EA9384');line([[.5,.568],[.5,.602]],.0025,'#C67267'); }
     E(.5,.509,.033,.022,'#513726');E(.489,.5,.008,.004,'rgba(255,231,208,.3)');
-    line([[.5,.528],[.5,.545]],.006,'#3C291E');
+    if(mood!=='crying') line([[.5,.528],[.5,.545]],.006,'#3C291E');
     if(happy){ arc(.474,.54,.026,.05*Math.PI,.93*Math.PI,.006,'#3C291E');arc(.526,.54,.026,.07*Math.PI,.95*Math.PI,.006,'#3C291E'); }
     else mouth(.5,.56,.034,'#3C291E');
   }
@@ -1874,7 +1874,7 @@ function paintPresetFace(c,key,T){
     E(.405,.452,.058,.074,'#1D1C20',-.5); E(.595,.452,.058,.074,'#1D1C20',.5);
     eye(.41,.44,.023); eye(.59,.44,.023);
     { const [u,v]=texPos(V3(0,-.07,1)); E(u,v,.021,.014,'#1D1C20'); E(u-.006,v-.004,.006,.003,'rgba(255,255,255,.3)'); }
-    line([[.5,.512],[.5,.524]],.0055,'#1D1C20');
+    if(mood!=='crying') line([[.5,.512],[.5,.524]],.0055,'#1D1C20');
     arc(.487,.523,.013,.08*Math.PI,.92*Math.PI,.0055,'#1D1C20'); arc(.513,.523,.013,.08*Math.PI,.92*Math.PI,.0055,'#1D1C20');
   }
   else if(key==='piggy'){
@@ -1887,7 +1887,7 @@ function paintPresetFace(c,key,T){
     { const [u,v]=texPos(V3(0,-.2,1)); E(u,v,.104,.088,'#E9D2B2'); }
     { const [u,v]=texPos(V3(0,-.1,1)); E(u,v,.026,.019,'#3E241A'); E(u-.008,v-.006,.007,.004,'rgba(255,230,210,.35)'); }
     eye(.405,.44,.023); eye(.595,.44,.023);
-    line([[.5,.556],[.5,.571]],.0055,'#3E241A');
+    if(mood!=='crying') line([[.5,.556],[.5,.571]],.0055,'#3E241A');
     arc(.486,.57,.014,.08*Math.PI,.92*Math.PI,.0055,'#3E241A'); arc(.514,.57,.014,.08*Math.PI,.92*Math.PI,.0055,'#3E241A');
   }
   c.restore();
