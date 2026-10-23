@@ -38,7 +38,7 @@ body{height:100%;background:var(--bg);color:var(--fg);font-family:var(--body);ov
 .stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .err{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}
 
-header{position:absolute;top:24px;left:max(24px,env(safe-area-inset-left,0px));pointer-events:none;z-index:2}
+header{color:var(--fg);position:absolute;top:24px;left:max(24px,env(safe-area-inset-left,0px));pointer-events:none;z-index:2}
 h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,4.4vw,44px);line-height:1;margin:0}
 h1 span{color:var(--accent)}
 .sub{color:var(--muted);font-size:16px;line-height:1.45;margin:14px 0 0;max-width:15em}
@@ -50,7 +50,7 @@ h1 span{color:var(--accent)}
 #squeeze{touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .12s,background .12s}
 #squeeze.on{transform:scale(.88,.8);background:var(--accent);color:var(--accent-fg)}
 
-.note{position:absolute;left:calc(50% - min(34vw,330px));top:30%;z-index:1;pointer-events:none;color:var(--fg);
+.note{color:var(--fg);position:absolute;left:calc(50% - min(34vw,330px));top:30%;z-index:1;pointer-events:none;color:var(--fg);
   font:600 34px/1 var(--hand);transform:rotate(-12deg);display:flex;flex-direction:column;align-items:center;gap:2px;opacity:.9}
 .note svg{margin-left:50px}
 .status{position:absolute;top:24px;left:50%;transform:translateX(-50%);z-index:3;background:var(--card);box-shadow:var(--shadow);border-radius:999px;padding:9px 16px;font-size:14px;font-weight:600;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis;pointer-events:none}
@@ -89,6 +89,14 @@ h1 span{color:var(--accent)}
 .sphere.clay{background:radial-gradient(circle at 40% 34%,#B9C9A6 0,#93A882 50%,#6E8160 100%)}
 
 .sw{width:28px;height:28px;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 1.5px var(--line);cursor:pointer;padding:0}
+.sw.auto{background:linear-gradient(135deg,#F3F0EB 0 50%,#1B1917 50% 100%)}
+.custom-bg{display:inline-flex;align-items:center;gap:10px;font:500 14px/1 var(--body);color:var(--fg);cursor:pointer}
+.custom-bg input{width:30px;height:30px;padding:0;border:0;border-radius:50%;background:none;cursor:pointer;
+  box-shadow:0 0 0 3px var(--card),0 0 0 4.5px var(--line)}
+.custom-bg input::-webkit-color-swatch-wrapper{padding:0}
+.custom-bg input::-webkit-color-swatch{border:0;border-radius:50%}
+.custom-bg input::-moz-color-swatch{border:0;border-radius:50%}
+.custom-bg input:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 .sw.small{width:24px;height:24px}
 .sw[aria-checked="true"]{box-shadow:0 0 0 2.5px var(--fg)}
 .sw.skin{position:relative}
@@ -211,6 +219,10 @@ h1 span{color:var(--accent)}
       </div>
       <div class="row" role="radiogroup" aria-label="Hair color" id="hairSwatches"></div>
     </div>
+    <div class="panel" data-panel="backdrop" hidden>
+      <div class="row" role="radiogroup" aria-label="Background color" id="bgSwatches"></div>
+      <label class="custom-bg" for="bgPick"><input type="color" id="bgPick" value="#F3F0EB"><span>Pick any colour</span></label>
+    </div>
   </div>
 
   <nav class="dock" aria-label="Customize">
@@ -222,6 +234,8 @@ h1 span{color:var(--accent)}
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01" stroke-width="2.6"/></svg>Face</button>
     <button class="tab" data-tab="hair" aria-selected="false">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21c0-6 1-11 6-15"/><path d="M12 21c0-5-2-9-7-12"/><path d="M12 21V8"/><path d="M17 3l1 2.5L20.5 6 18 7l-1 2.5L16 7l-2.5-1L16 5z"/></svg>Hair</button>
+    <button class="tab" data-tab="backdrop" aria-selected="false">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M3.5 15.5l5-4.5 4 3.5 3-2.5 5 4"/><circle cx="15.5" cy="9" r="1.6"/></svg>Background</button>
   </nav>
 </div>
 
@@ -398,7 +412,7 @@ group.add(ball);
    1. a contact shadow — the ball seen from below, blurred, darkest where it touches the table
       and fading and spreading as it lifts;
    2. a wide, very soft cast shadow from the key light, offset away from it. */
-const SHADOW_TINT = new THREE.Color('#3a2516');
+const SHADOW_TINT = new THREE.Color('#3a2516');   // retinted to match the chosen background
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.ShadowMaterial({opacity:.13, color:SHADOW_TINT}));
 ground.rotation.x = -Math.PI/2; ground.position.y = minY - .002; ground.receiveShadow = true;
 scene.add(ground);
@@ -2132,6 +2146,43 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>open
 stage.addEventListener('pointerdown',()=>{ if(!pop.hidden) closePop(); },true);
 window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!pop.hidden&&$('sheet').hidden) closePop(); });
 window.addEventListener('resize',()=>{ if(!pop.hidden){ const n=pop.dataset.tab; pop.hidden=true; openTab(n); } });
+
+/* ---------------- background colour ---------------- */
+const BACKDROPS=[{name:'Match light or dark mode',auto:true},{name:'Mint',base:'#DCEFE4'},{name:'Sky',base:'#DCEAF7'},{name:'Blush',base:'#F9E1E1'},
+  {name:'Butter',base:'#FBF0CF'},{name:'Lavender',base:'#E8E2F6'},{name:'Sage',base:'#C2D1BC'},{name:'Night',base:'#1F2A36'},{name:'Charcoal',base:'#232427'}];
+function applyBackdrop(hex){
+  // the page colour changes; text only where it sits right on the background (title, note),
+  // the white cards and dock keep their own colours
+  const root=document.documentElement.style, onBg=[document.querySelector('header'),$('hint')].map(e=>e.style);
+  if(!hex){                                               // follow the light/dark theme
+    root.removeProperty('--bg'); onBg.forEach(st=>{ st.removeProperty('--fg'); st.removeProperty('--muted'); });
+    SHADOW_TINT.set('#3a2516');
+  } else {
+    const c=new THREE.Color(hex), lum=.2126*c.r+.7152*c.g+.0722*c.b, dark=lum<.42;
+    root.setProperty('--bg',hex);
+    onBg.forEach(st=>{ st.setProperty('--fg',dark?'#F2EDE7':'#1E1B18'); st.setProperty('--muted',dark?'#B9B1A8':'#6E665F'); });
+    // the shadow takes on the floor's own hue, much darker, like a real shadow on coloured paper
+    const hsl={}; c.getHSL(hsl); SHADOW_TINT.setHSL(hsl.h, Math.min(1,hsl.s*1.1+.08), dark?.03:.17);
+  }
+  ground.material.color.copy(SHADOW_TINT); csPlane.material.color.copy(SHADOW_TINT);
+  state.bg=hex||null;
+  $('bgSwatches').querySelectorAll('.sw').forEach((b,i)=>b.setAttribute('aria-checked',BACKDROPS[i].auto?!hex:BACKDROPS[i].base===hex));
+  if(hex) $('bgPick').value=hex;
+  try{ localStorage.setItem('squish-bg',hex||''); }catch(_){}
+}
+{
+  const row=$('bgSwatches');
+  BACKDROPS.forEach((d,i)=>{
+    const b=document.createElement('button'); b.className='sw'+(d.auto?' auto':''); b.id='bgSwatches-'+i;
+    if(!d.auto) b.style.background=d.base;
+    b.setAttribute('role','radio'); b.setAttribute('aria-label',d.name); b.title=d.name; b.setAttribute('aria-checked','false');
+    b.onclick=()=>applyBackdrop(d.auto?null:d.base);
+    row.appendChild(b);
+  });
+  $('bgPick').addEventListener('input',e=>applyBackdrop(e.target.value.toUpperCase()));
+  let saved=''; try{ saved=localStorage.getItem('squish-bg')||''; }catch(_){}
+  applyBackdrop(/^#[0-9a-f]{6}$/i.test(saved)?saved.toUpperCase():null);
+}
 
 /* ---------------- boot ---------------- */
 setStyle(state.style); buildSwatches(); renderPresetRow(); applyMaterial(); buildFace(); setHair(state.hair); layout();
