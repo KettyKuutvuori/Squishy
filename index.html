@@ -1815,12 +1815,7 @@ function moodMouth(c,x,y,hw,mood,ink){
   const lw=Math.max(2,hw*.2);
   if(mood==='surprised'){ O(x,y+hw*.2,hw*.42,hw*.55,ink); O(x,y+hw*.45,hw*.26,hw*.2,'#E77F86'); }
   else if(mood==='angry'){ c.strokeStyle=ink; c.lineWidth=lw; c.lineCap='round'; c.beginPath(); c.arc(x,y+hw*.95,hw*.75,1.22*Math.PI,1.78*Math.PI); c.stroke(); }
-  else if(mood==='crying'){
-    c.fillStyle=ink; c.beginPath(); c.moveTo(x-hw*.7,y+hw*.45);
-    c.quadraticCurveTo(x-hw*.35,y-hw*.05,x,y+hw*.1); c.quadraticCurveTo(x+hw*.35,y-hw*.05,x+hw*.7,y+hw*.45);   // wobbly top lip
-    c.quadraticCurveTo(x,y+hw*1.05,x-hw*.7,y+hw*.45); c.fill();
-    O(x,y+hw*.62,hw*.3,hw*.16,'#E77F86');
-  }
+  // crying: no mouth, just the shut eyes and tears
 }
 
 // faces, drawn in face-texture units (eyes sit near y .45, mouth near .55)
