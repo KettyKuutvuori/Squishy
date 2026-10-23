@@ -1540,7 +1540,9 @@ function applyPreset(f){
   if(REFINED_ANIMALS.has(state.preset)){ applyRefinedAnimal(f); return; }
   const P=PRESETS[state.preset], bc=lin(P.base), tmp=new THREE.Color();
   const eyeBumps=P.toy&&!['frog','kitty','puppy','chick'].includes(state.preset)?[[-.216,.144],[.216,.144]].map(([x,y])=>[V3(x,y/1.12,Math.sqrt(1-x*x-y*y)),.09,.03,'ball']):[];
-  const bumps=[...(P.bumps||[]),...eyeBumps].map(b=>({c:b[0],r:b[1],h:b[2],prof:PROFILE[b[3]],col:b[4]?lin(b[4]):null,aspect:b[5],verts:[]}));
+  // a crying puppy has no tongue out (its tongue is the only mouth-like bump)
+  const ownBumps=(P.bumps||[]).filter(b=>!(state.preset==='puppy'&&state.mood==='crying'&&b[4]==='#EA9384'));
+  const bumps=[...ownBumps,...eyeBumps].map(b=>({c:b[0],r:b[1],h:b[2],prof:PROFILE[b[3]],col:b[4]?lin(b[4]):null,aspect:b[5],verts:[]}));
   bumpU.base.value=P.toy?0:(M().wrBase||0);
   if(P.round) bumpU.grainScale.value=Math.min(bumpU.grainScale.value,.005);
   if(P.toy && M().wr) bumpU.grainScale.value=Math.max(.009,M().bump);
