@@ -1642,13 +1642,16 @@ function clearAnimalDetails(){
     mesh.geometry.dispose(); mesh.material.dispose(); animalDetails.remove(mesh);
   }
 }
-function addAnimalPart(geometry,color,gloss=false){
+function addAnimalPart(geometry,color,gloss=false,follow=null){
   const material=new THREE.MeshPhysicalMaterial({color:lin(color),roughness:gloss?.22:.8,
     clearcoat:gloss?.35:0,envMapIntensity:gloss?.7:.45,
     bumpMap:gloss?null:grainTex,bumpScale:gloss?0:.004});
   const mesh=new THREE.Mesh(geometry,material);mesh.castShadow=true;mesh.frustumCulled=false;
   /* The part moves as one rigid piece, so pulling the clay can never tear it apart: it follows
      the patch of ball it sits on (average shift) and tilts with that patch's surface. */
+  // a piece that sits on another (inner ear on an ear) shares that piece's attachment exactly,
+  // so the two always move together
+  if(follow){ mesh.userData=follow.userData; animalDetails.add(mesh); return mesh; }
   geometry.computeBoundingSphere();
   const c=geometry.boundingSphere.center, R=Math.max(.12,geometry.boundingSphere.radius);
   // where it touches: the ball vertex nearest the part's centre, and the patch around it
@@ -1666,8 +1669,8 @@ function addAnimalPart(geometry,color,gloss=false){
   mesh.userData={anchor:new THREE.Vector3(...A), patch, n0};
   animalDetails.add(mesh); return mesh;
 }
-function animalOval(center,size,color,gloss=false,tilt=0){
-  const g=new THREE.SphereGeometry(1,28,18);g.scale(...size);g.rotateZ(tilt);g.translate(...center);addAnimalPart(g,color,gloss);
+function animalOval(center,size,color,gloss=false,tilt=0,follow=null){
+  const g=new THREE.SphereGeometry(1,28,18);g.scale(...size);g.rotateZ(tilt);g.translate(...center);return addAnimalPart(g,color,gloss,follow);
 }
 function frogEyeMound(side,color,mood='happy'){
   const geometry=new THREE.SphereGeometry(1,48,32);
@@ -1701,12 +1704,12 @@ function frogEyeMound(side,color,mood='happy'){
         }`);
   };
 }
-function animalEar(center,size,color,tilt){
+function animalEar(center,size,color,tilt,follow=null){
   const shape=new THREE.Shape();shape.moveTo(-.85,-.65);
   shape.quadraticCurveTo(-1,.1,-.45,.9);shape.quadraticCurveTo(-.2,1.1,.1,.85);
   shape.quadraticCurveTo(.8,.35,.85,-.6);shape.quadraticCurveTo(0,-.95,-.85,-.65);
   const g=new THREE.ExtrudeGeometry(shape,{depth:.5,bevelEnabled:true,bevelSegments:4,steps:1,bevelSize:.18,bevelThickness:.15,curveSegments:12});
-  g.scale(...size);g.rotateZ(tilt);g.translate(...center);addAnimalPart(g,color);
+  g.scale(...size);g.rotateZ(tilt);g.translate(...center);return addAnimalPart(g,color,false,follow);
 }
 function animalLine(points,width,color){
   const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));
@@ -1797,11 +1800,11 @@ function applyRefinedAnimal(f){
     for(const side of [-1,1]){
       if(key==='piggy'){
         // Thick, gently folded ears with recessed pink centres.
-        animalEar([side*.63,.74,.09],[.23,.25,.22],color,-side*.45);
-        animalEar([side*.63,.76,.215],[.12,.145,.045],'#C77D73',-side*.45);
+        const ear=animalEar([side*.63,.74,.09],[.23,.25,.22],color,-side*.45);
+        animalEar([side*.63,.76,.215],[.12,.145,.045],'#C77D73',-side*.45,ear);
       }else{
-        animalOval([side*.65,.76,.07],[.28,.285,.17],key==='panda'?'#252323':color);
-        if(key==='bear')animalOval([side*.65,.78,.221],[.155,.16,.035],cream);
+        const ear=animalOval([side*.65,.76,.07],[.28,.285,.17],key==='panda'?'#252323':color);
+        if(key==='bear')animalOval([side*.65,.78,.221],[.155,.16,.035],cream,false,0,ear);
       }
       if(key==='panda')faceOval([side*.405,.20,.82],[.23,.29,.075],'#262321',false,side*.4);
       if(happy) faceOval([side*.40,.20,key==='panda'?.903:.876],[.092,.103,.063],'#151311',true);
