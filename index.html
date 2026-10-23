@@ -411,14 +411,18 @@ const csPlaneGeo = new THREE.PlaneGeometry(CS.size,CS.size).rotateX(Math.PI/2);
 const csPlane = new THREE.Mesh(csPlaneGeo, new THREE.MeshBasicMaterial({color:SHADOW_TINT, alphaMap:csRT.texture, transparent:true, depthWrite:false, opacity:.82}));
 csPlane.scale.y = -1; csPlane.renderOrder = 1; csGroup.add(csPlane);
 const csBlur = new THREE.Mesh(csPlaneGeo); csBlur.visible = false; csGroup.add(csBlur);
-const csCam = new THREE.OrthographicCamera(-CS.size/2,CS.size/2,CS.size/2,-CS.size/2,0,CS.height);
+// near plane a little below the floor, so the ball's flat underside (which sits right on it) is
+// included; otherwise the contact shadow had a pale hole exactly where the ball touches down
+const csCam = new THREE.OrthographicCamera(-CS.size/2,CS.size/2,CS.size/2,-CS.size/2,-.06,CS.height);
 csCam.rotation.x = Math.PI/2; csGroup.add(csCam);
 const csDepth = new THREE.MeshDepthMaterial({side:THREE.DoubleSide});
 csDepth.onBeforeCompile = sh => {
   sh.fragmentShader = sh.fragmentShader.replace('gl_FragColor = vec4( vec3( 1.0 - fragCoordZ ), opacity );',
     'float a = pow( clamp( 1.0 - fragCoordZ, 0.0, 1.0 ), 2.6 ); gl_FragColor = vec4( vec3( a ), a );');
 };
-csDepth.depthTest = false; csDepth.depthWrite = false;
+// keep the surface nearest the floor: without this the top of the ball (far, almost clear) was
+// drawn over the bottom (touching, darkest), leaving a pale hole in the middle of the shadow
+csDepth.depthTest = true; csDepth.depthWrite = true;
 const blurMat = new THREE.ShaderMaterial({
   uniforms:{ tDiffuse:{value:null}, dir:{value:new THREE.Vector2()} },
   vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
